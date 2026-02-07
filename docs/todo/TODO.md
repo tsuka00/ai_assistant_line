@@ -54,6 +54,7 @@
 | 50 | OAuth 同意画面を External に変更 & Google 審査申請 | ⏳ 未着手 | 現在 Internal（組織内のみ）→ 外部ユーザー公開に必要 |
 | 51 | Agent レスポンスの Markdown 排除 & LINE フォーマット対応 | ✅ 完了 | システムプロンプト修正 (calendar_agent, main) |
 | 52 | Agent システムプロンプトに現在日時を動的注入 | ✅ 完了 | JST の日時・曜日を create_agent() 時に埋め込み |
+| 53 | 確認カルーセルの見栄え改善 & 文脈に応じたタイトル自動命名 | ✅ 完了 | date_selection に suggested_title 追加、session state で引き継ぎ、カラー統一 |
 | - | Google Maps エージェント作成 | ⏳ 未着手 | 場所検索・経路案内・ジオコーディング |
 | - | Gmail エージェント作成 | ⏳ 未着手 | メール送信・検索・閲覧 |
 | - | エージェントルーター実装 | ⏳ 未着手 | ユーザー入力→適切なエージェントへ振り分け |

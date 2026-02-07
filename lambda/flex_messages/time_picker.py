@@ -131,7 +131,7 @@ def build_time_picker(date: str, busy_slots: list[dict]) -> dict:
                     "text": "時間を選択",
                     "weight": "bold",
                     "size": "md",
-                    "color": "#1a73e8",
+                    "color": "#06C755",
                 },
                 {
                     "type": "text",

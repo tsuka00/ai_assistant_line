@@ -100,7 +100,7 @@ def _build_event_bubble(event: dict) -> dict:
                     "color": "#ffffff",
                 },
             ],
-            "backgroundColor": "#1a73e8",
+            "backgroundColor": "#06C755",
             "paddingAll": "15px",
         },
         "body": {

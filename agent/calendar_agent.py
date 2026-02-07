@@ -61,7 +61,10 @@ JSON 以外のテキストは含めないでください。
 {"type": "event_deleted", "message": "予定を削除しました。"}
 
 空き時間確認 / 予定作成の開始（ユーザーが日付未指定の場合）:
-{"type": "date_selection", "message": "日付を選択してください。", "busy_slots": [...]}
+{"type": "date_selection", "message": "日付を選択してください。", "busy_slots": [...], "suggested_title": "ご飯"}
+・suggested_title にはユーザーの発言から推測した予定タイトルを入れる
+・例: 「ご飯の予定入れたい」→ "ご飯"、「MTGしたい」→ "MTG"、「歯医者に行きたい」→ "歯医者"
+・推測できない場合は "新しい予定" にする
 
 通常のテキスト応答:
 {"type": "text", "message": "応答テキスト"}

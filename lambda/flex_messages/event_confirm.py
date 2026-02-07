@@ -29,12 +29,22 @@ def build_event_confirmation(
             "contents": [
                 {
                     "type": "text",
-                    "text": "予定の確認",
+                    "text": summary,
                     "weight": "bold",
-                    "size": "md",
-                    "color": "#1a73e8",
-                }
+                    "size": "xl",
+                    "color": "#FFFFFF",
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
+                    "text": "予定を作成します",
+                    "size": "xs",
+                    "color": "#FFFFFFCC",
+                    "margin": "sm",
+                },
             ],
+            "backgroundColor": "#06C755",
+            "paddingAll": "20px",
         },
         "body": {
             "type": "box",
@@ -42,54 +52,49 @@ def build_event_confirmation(
             "contents": [
                 {
                     "type": "box",
-                    "layout": "baseline",
+                    "layout": "horizontal",
                     "contents": [
-                        {"type": "text", "text": "📅", "size": "sm", "flex": 0},
+                        {
+                            "type": "text",
+                            "text": "📅",
+                            "size": "sm",
+                            "flex": 0,
+                        },
                         {
                             "type": "text",
                             "text": date_display,
-                            "size": "sm",
-                            "color": "#333333",
-                            "flex": 1,
-                        },
-                    ],
-                    "spacing": "sm",
-                },
-                {
-                    "type": "box",
-                    "layout": "baseline",
-                    "contents": [
-                        {"type": "text", "text": "🕐", "size": "sm", "flex": 0},
-                        {
-                            "type": "text",
-                            "text": time_display,
-                            "size": "sm",
-                            "color": "#333333",
-                            "flex": 1,
-                        },
-                    ],
-                    "spacing": "sm",
-                },
-                {
-                    "type": "box",
-                    "layout": "baseline",
-                    "contents": [
-                        {"type": "text", "text": "📝", "size": "sm", "flex": 0},
-                        {
-                            "type": "text",
-                            "text": summary,
-                            "size": "sm",
+                            "size": "md",
                             "color": "#333333",
                             "weight": "bold",
                             "flex": 1,
-                            "wrap": True,
                         },
                     ],
-                    "spacing": "sm",
+                    "spacing": "md",
+                },
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "🕐",
+                            "size": "sm",
+                            "flex": 0,
+                        },
+                        {
+                            "type": "text",
+                            "text": time_display,
+                            "size": "md",
+                            "color": "#333333",
+                            "weight": "bold",
+                            "flex": 1,
+                        },
+                    ],
+                    "spacing": "md",
                 },
             ],
             "spacing": "lg",
-            "paddingAll": "15px",
+            "paddingAll": "20px",
         },
         "footer": {
             "type": "box",
@@ -99,12 +104,12 @@ def build_event_confirmation(
                     "type": "button",
                     "action": {
                         "type": "postback",
-                        "label": "タイトル編集",
+                        "label": "タイトル変更",
                         "data": (
                             f"action=edit_title"
                             f"&date={date}&start={start}&end={end}"
                         ),
-                        "displayText": "タイトルを変更します。新しいタイトルを入力してください。",
+                        "displayText": "タイトルを変更します",
                     },
                     "style": "secondary",
                     "height": "sm",
@@ -129,6 +134,7 @@ def build_event_confirmation(
                 },
             ],
             "spacing": "sm",
+            "paddingAll": "15px",
         },
     }
 
@@ -155,32 +161,56 @@ def build_delete_confirmation(event: dict) -> dict:
     bubble = {
         "type": "bubble",
         "size": "kilo",
-        "body": {
+        "header": {
             "type": "box",
             "layout": "vertical",
             "contents": [
                 {
                     "type": "text",
+                    "text": summary,
+                    "weight": "bold",
+                    "size": "xl",
+                    "color": "#FFFFFF",
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
                     "text": "この予定を削除しますか？",
-                    "weight": "bold",
-                    "size": "sm",
-                    "color": "#ff4444",
-                },
-                {
-                    "type": "text",
-                    "text": f"📅 {date_display}",
-                    "size": "sm",
-                    "margin": "md",
-                },
-                {
-                    "type": "text",
-                    "text": f"📝 {summary}",
-                    "size": "sm",
-                    "weight": "bold",
+                    "size": "xs",
+                    "color": "#FFFFFFCC",
+                    "margin": "sm",
                 },
             ],
-            "spacing": "sm",
-            "paddingAll": "15px",
+            "backgroundColor": "#ff4444",
+            "paddingAll": "20px",
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "📅",
+                            "size": "sm",
+                            "flex": 0,
+                        },
+                        {
+                            "type": "text",
+                            "text": date_display,
+                            "size": "md",
+                            "color": "#333333",
+                            "weight": "bold",
+                            "flex": 1,
+                        },
+                    ],
+                    "spacing": "md",
+                },
+            ],
+            "paddingAll": "20px",
         },
         "footer": {
             "type": "box",
@@ -213,6 +243,7 @@ def build_delete_confirmation(event: dict) -> dict:
                 },
             ],
             "spacing": "sm",
+            "paddingAll": "15px",
         },
     }
 

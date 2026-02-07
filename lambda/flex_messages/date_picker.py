@@ -82,7 +82,7 @@ def build_date_picker(busy_dates: list[str], weeks: int = 2) -> dict:
                         "text": f"日付を選択（{week_num + 1}週目）",
                         "weight": "bold",
                         "size": "md",
-                        "color": "#1a73e8",
+                        "color": "#06C755",
                     },
                     {
                         "type": "text",

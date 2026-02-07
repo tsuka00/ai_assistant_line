@@ -290,6 +290,10 @@ def convert_agent_response(response_text: str, user_id: str) -> list:
 
     if resp_type == "date_selection":
         busy_slots = data.get("busy_slots", [])
+        suggested_title = data.get("suggested_title", "新しい予定")
+        # suggested_title を session state に保存（カルーセルフローで引き継ぐ）
+        save_user_state(user_id, {"action": "date_selection", "suggested_title": suggested_title})
+
         # busy_slots から日付ごとの busy を抽出
         from datetime import datetime
 
@@ -479,6 +483,11 @@ def _handle_select_date(reply_token: str, user_id: str, params: dict) -> None:
         send_response(reply_token, user_id, _build_oauth_messages(user_id))
         return
 
+    # suggested_title を引き継ぎ
+    user_state = get_user_state(user_id)
+    suggested_title = (user_state or {}).get("suggested_title", "新しい予定")
+    save_user_state(user_id, {"action": "select_date", "suggested_title": suggested_title})
+
     busy_slots = google_calendar_api.get_free_busy(creds, date, date)
     flex = build_time_picker(date, busy_slots)
     send_response(reply_token, user_id, [_build_flex_message(flex)])
@@ -490,11 +499,15 @@ def _handle_select_time(reply_token: str, user_id: str, params: dict) -> None:
     start = params.get("start", [""])[0]
     end = params.get("end", [""])[0]
 
+    # session state から suggested_title を取得
+    user_state = get_user_state(user_id)
+    summary = (user_state or {}).get("suggested_title", "新しい予定")
+
     flex = build_event_confirmation(
         date=date,
         start=start,
         end=end,
-        summary="新しい予定",
+        summary=summary,
     )
     send_response(reply_token, user_id, [_build_flex_message(flex)])
 
