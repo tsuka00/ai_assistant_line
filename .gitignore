@@ -37,6 +37,7 @@ Thumbs.db
 .aws-sam/
 samconfig.toml
 docs/aws_iam_info.txt
+docs/gcp_info.txt
 
 # Docker
 .docker/
