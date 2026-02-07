@@ -60,39 +60,11 @@ def test_lambda_handler_valid_request():
 
 
 # ---------------------------------------------------------------------------
-# invoke_agent (boto3) test
+# invoke_router_agent tests
 # ---------------------------------------------------------------------------
 
 
-def test_invoke_agent_boto3():
-    """boto3 invoke_agent_runtime が正しいパラメータで呼ばれること."""
-    mock_client = MagicMock()
-    response_body = json.dumps({"result": "AI応答"}).encode("utf-8")
-    mock_client.invoke_agent_runtime.return_value = {
-        "contentType": "application/json",
-        "response": io.BytesIO(response_body),
-    }
-
-    with patch.object(idx, "boto3") as mock_boto3:
-        mock_boto3.client.return_value = mock_client
-        result = idx.invoke_agent("テストプロンプト")
-
-    mock_boto3.client.assert_called_once_with(
-        "bedrock-agentcore", region_name="us-east-1"
-    )
-    call_kwargs = mock_client.invoke_agent_runtime.call_args.kwargs
-    payload = json.loads(call_kwargs["payload"].decode("utf-8"))
-    assert payload["prompt"] == "テストプロンプト"
-    assert call_kwargs["contentType"] == "application/json"
-    assert result == "AI応答"
-
-
-# ---------------------------------------------------------------------------
-# invoke_agent_local test
-# ---------------------------------------------------------------------------
-
-
-def test_invoke_agent_local():
+def test_invoke_router_agent_local():
     """ローカルエンドポイントへの HTTP 呼び出しが正しいこと."""
     original = idx.AGENTCORE_RUNTIME_ENDPOINT
     idx.AGENTCORE_RUNTIME_ENDPOINT = "http://localhost:8080"
@@ -107,13 +79,81 @@ def test_invoke_agent_local():
         with (
             patch("urllib.request.Request") as mock_request_cls,
             patch("urllib.request.urlopen", return_value=mock_resp),
+            patch.object(idx, "_build_google_credentials", return_value=None),
         ):
-            result = idx.invoke_agent_local("テスト")
+            result = idx.invoke_router_agent("テスト", "U1234")
 
         mock_request_cls.assert_called_once()
         call_args = mock_request_cls.call_args
         assert call_args[0][0] == "http://localhost:8080/invocations"
         assert result == "ローカル応答"
+    finally:
+        idx.AGENTCORE_RUNTIME_ENDPOINT = original
+
+
+def test_invoke_router_agent_with_credentials():
+    """Google 認証情報が payload に含まれること."""
+    original = idx.AGENTCORE_RUNTIME_ENDPOINT
+    idx.AGENTCORE_RUNTIME_ENDPOINT = "http://localhost:8080"
+
+    fake_creds = {
+        "access_token": "tok",
+        "refresh_token": "ref",
+        "client_id": "cid",
+        "client_secret": "csec",
+        "expired": False,
+    }
+
+    try:
+        response_body = json.dumps({"result": "応答"}).encode("utf-8")
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = response_body
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("urllib.request.Request") as mock_request_cls,
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            patch.object(idx, "_build_google_credentials", return_value=fake_creds),
+        ):
+            result = idx.invoke_router_agent("予定を見せて", "U1234")
+
+        # payload に google_credentials が含まれているか確認
+        call_args = mock_request_cls.call_args
+        # Request(url, data=..., headers=...) の data を取得
+        sent_bytes = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data")
+        sent_data = json.loads(sent_bytes.decode("utf-8"))
+        assert sent_data["prompt"] == "予定を見せて"
+        assert sent_data["google_credentials"]["access_token"] == "tok"
+    finally:
+        idx.AGENTCORE_RUNTIME_ENDPOINT = original
+
+
+def test_invoke_router_agent_boto3():
+    """boto3 invoke_agent_runtime が正しいパラメータで呼ばれること."""
+    original = idx.AGENTCORE_RUNTIME_ENDPOINT
+    idx.AGENTCORE_RUNTIME_ENDPOINT = ""  # AWS ルート
+
+    try:
+        mock_client = MagicMock()
+        response_body = json.dumps({"result": "AI応答"}).encode("utf-8")
+        mock_client.invoke_agent_runtime.return_value = {
+            "contentType": "application/json",
+            "response": io.BytesIO(response_body),
+        }
+
+        with (
+            patch.object(idx, "boto3") as mock_boto3,
+            patch.object(idx, "_build_google_credentials", return_value=None),
+        ):
+            mock_boto3.client.return_value = mock_client
+            result = idx.invoke_router_agent("テストプロンプト", "U1234")
+
+        call_kwargs = mock_client.invoke_agent_runtime.call_args.kwargs
+        payload = json.loads(call_kwargs["payload"].decode("utf-8"))
+        assert payload["prompt"] == "テストプロンプト"
+        assert "google_credentials" not in payload
+        assert result == "AI応答"
     finally:
         idx.AGENTCORE_RUNTIME_ENDPOINT = original
 
@@ -133,51 +173,39 @@ def _make_message_event(user_id="U1234", text="こんにちは", reply_token="to
 
 
 def test_handle_text_message_reply():
-    """55秒以内なら reply_message が呼ばれること (非カレンダー)."""
-    original = idx.AGENTCORE_RUNTIME_ENDPOINT
-    idx.AGENTCORE_RUNTIME_ENDPOINT = ""  # boto3 ルート
+    """55秒以内なら reply_message が呼ばれること."""
+    with (
+        patch.object(idx, "get_user_state", return_value=None),
+        patch.object(idx, "show_loading") as mock_loading,
+        patch.object(idx, "invoke_router_agent", return_value="AI応答テスト") as mock_invoke,
+        patch.object(idx, "send_response") as mock_send,
+    ):
+        event = _make_message_event()
+        idx.handle_text_message(event)
 
-    try:
-        with (
-            patch.object(idx, "get_user_state", return_value=None),
-            patch.object(idx, "show_loading") as mock_loading,
-            patch.object(idx, "invoke_agent", return_value="AI応答テスト") as mock_invoke,
-            patch.object(idx, "send_response") as mock_send,
-        ):
-            event = _make_message_event()
-            idx.handle_text_message(event)
-
-            mock_loading.assert_called_once_with("U1234")
-            mock_invoke.assert_called_once_with("こんにちは")
-            mock_send.assert_called_once()
-    finally:
-        idx.AGENTCORE_RUNTIME_ENDPOINT = original
+        mock_loading.assert_called_once_with("U1234")
+        mock_invoke.assert_called_once_with("こんにちは", "U1234")
+        mock_send.assert_called_once()
 
 
 def test_handle_text_message_push_fallback():
     """55秒超なら push_message にフォールバックすること."""
-    original = idx.AGENTCORE_RUNTIME_ENDPOINT
-    idx.AGENTCORE_RUNTIME_ENDPOINT = ""
+    with (
+        patch.object(idx, "get_user_state", return_value=None),
+        patch.object(idx, "show_loading"),
+        patch.object(idx, "invoke_router_agent", return_value="遅延応答"),
+        patch.object(idx, "reply_message", side_effect=Exception("expired")),
+        patch.object(idx, "push_message") as mock_push,
+        patch.object(idx, "time") as mock_time,
+    ):
+        # time.time() を制御して 56 秒経過をシミュレート
+        mock_time.time.side_effect = [0.0, 56.0]
+        mock_time.strftime = MagicMock()
+        event = _make_message_event()
+        idx.handle_text_message(event)
 
-    try:
-        with (
-            patch.object(idx, "get_user_state", return_value=None),
-            patch.object(idx, "show_loading"),
-            patch.object(idx, "invoke_agent", return_value="遅延応答"),
-            patch.object(idx, "reply_message", side_effect=Exception("expired")),
-            patch.object(idx, "push_message") as mock_push,
-            patch.object(idx, "time") as mock_time,
-        ):
-            # time.time() を制御して 56 秒経過をシミュレート
-            mock_time.time.side_effect = [0.0, 56.0]
-            mock_time.strftime = MagicMock()
-            event = _make_message_event()
-            idx.handle_text_message(event)
-
-            # send_response 内で push にフォールバック
-            mock_push.assert_called()
-    finally:
-        idx.AGENTCORE_RUNTIME_ENDPOINT = original
+        # send_response 内で push にフォールバック
+        mock_push.assert_called()
 
 
 # ---------------------------------------------------------------------------

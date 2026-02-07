@@ -43,12 +43,10 @@ CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 parser = WebhookParser(CHANNEL_SECRET)
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
-# AgentCore
+# AgentCore (Router Agent)
 AGENT_RUNTIME_ARN = os.environ.get("AGENT_RUNTIME_ARN", "")
-CALENDAR_AGENT_RUNTIME_ARN = os.environ.get("CALENDAR_AGENT_RUNTIME_ARN", "")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 AGENTCORE_RUNTIME_ENDPOINT = os.environ.get("AGENTCORE_RUNTIME_ENDPOINT", "")
-CALENDAR_AGENT_ENDPOINT = os.environ.get("CALENDAR_AGENT_ENDPOINT", "")
 
 TIMEOUT_SECONDS = 55  # Lambda 60s timeout の 5s 手前
 
@@ -107,53 +105,36 @@ def send_response(reply_token: str, user_id: str, messages: list, elapsed: float
 # ========== Agent 呼び出し ==========
 
 
-def invoke_agent(prompt: str, runtime_arn: str = "") -> str:
-    """AgentCore Runtime を呼び出してAI応答を取得."""
-    client = boto3.client("bedrock-agentcore", region_name=AWS_REGION)
-
-    payload = json.dumps({"prompt": prompt}).encode("utf-8")
-    arn = runtime_arn or AGENT_RUNTIME_ARN
-
-    response = client.invoke_agent_runtime(
-        agentRuntimeArn=arn,
-        runtimeSessionId=str(uuid.uuid4()),
-        payload=payload,
-        contentType="application/json",
-    )
-
-    content_type = response.get("contentType", "")
-    body = response["response"].read().decode("utf-8")
-
-    if "application/json" in content_type:
-        result = json.loads(body)
-        return result.get("result", body)
-
-    return body
-
-
-def invoke_calendar_agent(prompt: str, line_user_id: str) -> str:
-    """Calendar Agent を呼び出し (Google 認証情報付き)."""
+def _build_google_credentials(line_user_id: str) -> dict | None:
+    """Google 認証情報を取得して dict に変換. 未連携なら None."""
     creds = google_auth.get_google_credentials(line_user_id)
     if not creds:
-        return json.dumps({"type": "oauth_required", "message": "Google 連携が必要です。"})
-
-    payload = {
-        "prompt": prompt,
-        "google_credentials": {
-            "access_token": creds.token,
-            "refresh_token": creds.refresh_token,
-            "client_id": google_auth.GOOGLE_CLIENT_ID,
-            "client_secret": google_auth.GOOGLE_CLIENT_SECRET,
-            "expired": creds.expired if hasattr(creds, "expired") else False,
-        },
+        return None
+    return {
+        "access_token": creds.token,
+        "refresh_token": creds.refresh_token,
+        "client_id": google_auth.GOOGLE_CLIENT_ID,
+        "client_secret": google_auth.GOOGLE_CLIENT_SECRET,
+        "expired": creds.expired if hasattr(creds, "expired") else False,
     }
 
-    if CALENDAR_AGENT_ENDPOINT:
-        return _invoke_agent_local(payload, CALENDAR_AGENT_ENDPOINT)
 
+def invoke_router_agent(prompt: str, line_user_id: str) -> str:
+    """Router Agent を呼び出し (Google 認証情報付き)."""
+    payload = {"prompt": prompt}
+
+    # Google 認証情報があれば付与（Router → Calendar Agent に転送される）
+    google_creds = _build_google_credentials(line_user_id)
+    if google_creds:
+        payload["google_credentials"] = google_creds
+
+    if AGENTCORE_RUNTIME_ENDPOINT:
+        return _invoke_agent_local(payload, AGENTCORE_RUNTIME_ENDPOINT)
+
+    # AWS 環境: AgentCore Runtime 経由
     client = boto3.client("bedrock-agentcore", region_name=AWS_REGION)
     response = client.invoke_agent_runtime(
-        agentRuntimeArn=CALENDAR_AGENT_RUNTIME_ARN,
+        agentRuntimeArn=AGENT_RUNTIME_ARN,
         runtimeSessionId=str(uuid.uuid4()),
         payload=json.dumps(payload).encode("utf-8"),
         contentType="application/json",
@@ -165,25 +146,8 @@ def invoke_calendar_agent(prompt: str, line_user_id: str) -> str:
     return body
 
 
-def invoke_agent_local(prompt: str) -> str:
-    """ローカル開発用: 直接 AgentCore エンドポイントを呼び出し."""
-    import urllib.request
-
-    endpoint = AGENTCORE_RUNTIME_ENDPOINT.rstrip("/")
-    url = f"{endpoint}/invocations"
-
-    data = json.dumps({"prompt": prompt}).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}
-    )
-
-    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
-        return result.get("result", str(result))
-
-
 def _invoke_agent_local(payload: dict, endpoint: str) -> str:
-    """ローカル開発用: Calendar Agent エンドポイントに直接アクセス."""
+    """ローカル開発用: AgentCore エンドポイントに直接アクセス."""
     import urllib.request
 
     url = f"{endpoint.rstrip('/')}/invocations"
@@ -389,31 +353,10 @@ def handle_text_message(event: MessageEvent) -> None:
     except Exception:
         logger.warning("Failed to show loading animation", exc_info=True)
 
-    # 2. Google OAuth チェック & Calendar Agent 呼び出し
+    # 2. Router Agent 呼び出し（Google 認証情報付き）
     start_time = time.time()
     try:
-        # カレンダー関連の意図を判定（簡易キーワードチェック）
-        calendar_keywords = [
-            "予定", "スケジュール", "カレンダー", "日程",
-            "ミーティング", "MTG", "会議", "打ち合わせ",
-            "空き", "空いて", "暇", "いつ",
-        ]
-        is_calendar = any(kw in user_text for kw in calendar_keywords)
-
-        if is_calendar:
-            # OAuth チェック
-            creds = google_auth.get_google_credentials(user_id)
-            if not creds:
-                send_response(reply_token, user_id, _build_oauth_messages(user_id))
-                return
-
-            ai_response = invoke_calendar_agent(user_text, user_id)
-        else:
-            # 通常の Agent 呼び出し
-            if AGENTCORE_RUNTIME_ENDPOINT:
-                ai_response = invoke_agent_local(user_text)
-            else:
-                ai_response = invoke_agent(user_text)
+        ai_response = invoke_router_agent(user_text, user_id)
     except Exception:
         logger.error("Agent invocation failed", exc_info=True)
         ai_response = json.dumps(
@@ -668,9 +611,6 @@ if __name__ == "__main__":
     CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
     AGENTCORE_RUNTIME_ENDPOINT = os.environ.get(
         "AGENTCORE_RUNTIME_ENDPOINT", "http://localhost:8080"
-    )
-    CALENDAR_AGENT_ENDPOINT = os.environ.get(
-        "CALENDAR_AGENT_ENDPOINT", "http://localhost:8081"
     )
     AWS_REGION = os.environ.get("AWS_REGION", "ap-northeast-1")
 

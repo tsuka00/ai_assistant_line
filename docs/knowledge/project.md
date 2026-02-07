@@ -405,3 +405,75 @@ Google が LINE アプリ内 WebView での OAuth 認証をブロックするた
 | エンドポイント URL | LINE Developer Console で設定する URL は ngrok ドメイン (ローカル) or 本番 URL と一致させる |
 | ngrok 無料枠の制限 | `fetch` 時に `ngrok-skip-browser-warning` ヘッダーが必要 (無料枠のブラウザ警告ページを回避) |
 | openWindow external | `liff.openWindow({ url, external: true })` で外部ブラウザを開く。`external: false` だと LINE 内 WebView で開かれ Google にブロックされる |
+
+---
+
+## 14. Agents as Tools パターン (Router Agent)
+
+### アーキテクチャ
+
+```
+LINE User → Lambda → Router Agent (port 8080) → 一般質問: 自分で回答
+                                                → カレンダー: calendar_agent @tool → Calendar Agent (port 8081)
+```
+
+Router Agent が LLM ベースで判断し、一般質問には自分で回答、専門的な操作は `@tool` 経由で専門 Agent に委譲する。
+キーワードマッチではなく LLM の意図理解に基づくルーティングなので、自然な表現にも対応できる。
+
+### LLM がツール結果の JSON を加工してしまう問題
+
+**問題**: Router Agent の LLM が `calendar_agent` ツールの戻り値（JSON）を受け取ると、
+それを自然言語に変換して返してしまう。例えば `{"type": "calendar_events", "events": [...]}` が
+「2月9日の予定は2件です」に変換され、Lambda の `convert_agent_response` が JSON パースに失敗する。
+
+システムプロンプトで「加工しないでください」と指示しても、LLM の性質上 100% の保証はできない。
+
+**解決策**: モジュールレベル変数 `_calendar_agent_result` でツールの生レスポンスを保持し、
+`invoke()` で LLM の出力を無視して生 JSON を直接返す。
+
+```python
+_calendar_agent_result: str | None = None
+
+@tool
+def calendar_agent(query: str) -> str:
+    global _calendar_agent_result
+    # ... Calendar Agent を呼び出し ...
+    raw_result = result.get("result", str(result))
+    _calendar_agent_result = raw_result  # 生レスポンスを保持
+    return raw_result
+
+@app.entrypoint
+def invoke(payload: dict) -> dict:
+    global _calendar_agent_result
+    _calendar_agent_result = None  # リセット
+
+    agent = create_agent()
+    result = agent(prompt)
+
+    # ツールが呼ばれた場合、LLM の後処理をバイパス
+    if _calendar_agent_result is not None:
+        response_text = _calendar_agent_result
+    else:
+        response_text = str(result)  # 一般回答はそのまま
+    ...
+```
+
+**教訓**: LLM にツール結果を「そのまま返せ」と指示するより、アプリケーションレベルでバイパスする方が確実。
+
+### Router Agent のシステムプロンプト設計
+
+**問題**: ルーティングルールが曖昧だと、カレンダー関連のリクエストでもツールを呼ばず
+自分でテキスト回答してしまう（例: 「来週に買い物の予定を入れたい」に対して質問返しをする）。
+
+**解決策**: ルーティングルールを具体的なパターン列挙 + 「少しでも意図があれば必ずツール委譲」と明示する。
+
+```
+calendar_agent を呼ぶべきケース:
+・予定/スケジュール/カレンダーに関する操作すべて
+・「予定を見せて」「予定ある？」→ 予定一覧
+・「予定を入れたい」「○○したい」(予定作成の意図) → 予定作成
+・「来週」「明日」などの日時表現 + 行動 → 予定作成
+・ユーザーの発言にカレンダー操作の意図が少しでもあれば → calendar_agent
+```
+
+**教訓**: LLM は「判断してください」と言うと自分で回答しがち。「必ず」「質問や確認も不要」と強制する方がルーティング精度が上がる。

@@ -55,7 +55,12 @@
 | 51 | Agent レスポンスの Markdown 排除 & LINE フォーマット対応 | ✅ 完了 | システムプロンプト修正 (calendar_agent, main) |
 | 52 | Agent システムプロンプトに現在日時を動的注入 | ✅ 完了 | JST の日時・曜日を create_agent() 時に埋め込み |
 | 53 | 確認カルーセルの見栄え改善 & 文脈に応じたタイトル自動命名 | ✅ 完了 | date_selection に suggested_title 追加、session state で引き継ぎ、カラー統一 |
+| 54 | main.py を Router Agent (Agents as Tools) に改修 | ✅ 完了 | キーワードマッチ廃止、LLM ベースのルーティング + 汎用回答 |
+| 55 | Calendar Agent を @tool として Router に登録 | ✅ 完了 | calendar_agent ツール — HTTP 経由で Calendar Agent を呼び出し |
+| 56 | Lambda のキーワード振り分けを廃止、Router Agent 一本化 | ✅ 完了 | invoke_router_agent に統一、常に Router Agent を呼ぶ |
+| 57 | Google 認証情報の受け渡し設計 | ✅ 完了 | Lambda → Router (_google_credentials) → Calendar の credentials フロー |
+| 58 | Router Agent のユニットテスト | ✅ 完了 | 全33テスト合格 (Router + Lambda + Flex + OAuth) |
+| 59 | ローカル E2E テスト (Router 経由) | ✅ 完了 | LINE → Lambda → Router → Calendar の全フロー確認済み |
 | - | Google Maps エージェント作成 | ⏳ 未着手 | 場所検索・経路案内・ジオコーディング |
 | - | Gmail エージェント作成 | ⏳ 未着手 | メール送信・検索・閲覧 |
-| - | エージェントルーター実装 | ⏳ 未着手 | ユーザー入力→適切なエージェントへ振り分け |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |

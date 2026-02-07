@@ -1,7 +1,8 @@
 # LINE AI Assistant
 
 LINE 上で動く AI チャットボット。
-AWS Bedrock AgentCore Runtime (Strands Agents + Claude Sonnet 4.5) で AI エージェントをホストし、LINE Webhook は API Gateway + Lambda で受ける。
+AWS Bedrock AgentCore Runtime (Strands Agents + Claude) で AI エージェントをホストし、LINE Webhook は API Gateway + Lambda で受ける。
+Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に委譲する。
 Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の閲覧・作成・更新・削除が可能。
 
 ---
@@ -10,13 +11,16 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 
 ```
 ┌──────┐     ┌──────────────────┐     ┌─────────────────────┐     ┌─────────────────────────┐     ┌──────────────────┐
-│ LINE │────▶│ API Gateway      │────▶│  Lambda (Python)    │────▶│ General Agent           │────▶│ Claude Sonnet 4.5│
+│ LINE │────▶│ API Gateway      │────▶│  Lambda (Python)    │────▶│ Router Agent            │────▶│ Claude           │
 │ User │◀────│ POST /callback   │◀────│  Webhook Handler    │     │ (AgentCore Runtime)     │◀────│ (Foundation Model)│
-└──────┘     │ GET /oauth/callback│    │                     │     └─────────────────────────┘     └──────────────────┘
-             └──────────────────┘     │                     │
-                                      │  ┌── OAuth チェック  │     ┌─────────────────────────┐     ┌──────────────────┐
-                                      │  │  ルーティング     │────▶│ Calendar Agent          │────▶│ Google Calendar  │
-                                      │  └──────────────────│     │ (AgentCore Runtime)     │     │ API              │
+└──────┘     │ GET /oauth/callback│    │                     │     │                         │     └──────────────────┘
+             └──────────────────┘     │                     │     │  ┌─ 一般質問: 自分で回答 │
+                                      │                     │     │  └─ カレンダー: @tool ──┐│
+                                      │                     │     └─────────────────────────┘│
+                                      │                     │                                │
+                                      │                     │     ┌─────────────────────────┐│    ┌──────────────────┐
+                                      │                     │     │ Calendar Agent          ◀┘────▶│ Google Calendar  │
+                                      │                     │     │ (AgentCore Runtime)     │     │ API              │
                                       │                     │     └─────────────────────────┘     └──────────────────┘
                                       │                     │
                                       │  ┌─── DynamoDB ────┐│     ┌─────────────────────────┐
@@ -31,13 +35,13 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 1. LINE ユーザーがメッセージを送信
 2. API Gateway が `POST /callback` を Lambda へルーティング
 3. Lambda が LINE Webhook 署名を検証し、メッセージを処理
-4. Lambda が Google OAuth トークンの有無を確認
-   - 未認証: LIFF 経由の OAuth 連携リンク (Flex Message) を返信
-5. Lambda がメッセージ内容に応じて Agent を選択
-   - 一般的な質問: General Agent (AgentCore Runtime)
-   - カレンダー関連: Calendar Agent (AgentCore Runtime)
-6. Agent が Claude Sonnet 4.5 で AI 応答を生成
-7. Lambda が Agent レスポンスの type フィールドに応じて Flex Message を構築
+4. Lambda が Router Agent を呼び出し (Google 認証情報付き)
+5. Router Agent が LLM ベースで意図を判断
+   - 一般質問・雑談 → 自分で直接回答
+   - カレンダー操作 → `calendar_agent` @tool 経由で Calendar Agent に委譲
+6. Calendar Agent が Google Calendar API を呼び出し、JSON レスポンスを返却
+7. Router Agent が Calendar Agent の生 JSON をそのまま Lambda に返す (LLM の後処理をバイパス)
+8. Lambda が Agent レスポンスの type フィールドに応じて Flex Message を構築
    - `calendar_events` → 予定一覧カルーセル
    - `date_selection` → 日付選択カルーセル (空き=緑 / 埋まり=グレー)
    - `event_created` / `event_deleted` → 確認メッセージ
@@ -72,14 +76,14 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 ```
 assistant_agent_line/
 ├── agent/                         # Strands Agent (AgentCore Container)
-│   ├── main.py                    # General Agent エントリポイント
+│   ├── main.py                    # Router Agent エントリポイント (Agents as Tools)
 │   ├── calendar_agent.py          # Calendar Agent (port 8081)
 │   ├── Dockerfile.calendar        # Calendar Agent Docker
 │   ├── tools/
 │   │   └── google_calendar.py     # 7 Calendar tools (@tool)
 │   └── requirements.txt           # strands-agents, bedrock-agentcore
 ├── lambda/                        # LINE Webhook Handler
-│   ├── index.py                   # Lambda ハンドラ (Postback, OAuth チェック, Calendar ルーティング)
+│   ├── index.py                   # Lambda ハンドラ (Postback, Router Agent 呼び出し)
 │   ├── google_auth.py             # OAuth2 トークン管理 (DynamoDB CRUD)
 │   ├── google_calendar_api.py     # Calendar API ラッパー
 │   ├── oauth_callback.py          # OAuth2 コールバックハンドラ
@@ -200,7 +204,7 @@ cd ..
 
 4 つのターミナルを使用する。
 
-### Terminal 1: General Agent 起動
+### Terminal 1: Router Agent 起動
 
 ```bash
 source .venv/bin/activate
@@ -253,7 +257,7 @@ ngrok http 8000
 
 | コマンド | 説明 |
 |---------|------|
-| `python agent/main.py` | General Agent をローカル起動 (port 8080) |
+| `python agent/main.py` | Router Agent をローカル起動 (port 8080) |
 | `python agent/calendar_agent.py --port 8081` | Calendar Agent をローカル起動 (port 8081) |
 | `python lambda/index.py` | Lambda を FastAPI でローカル起動 (port 8000) |
 | `ngrok http 8000` | ngrok トンネル作成 |
@@ -292,7 +296,7 @@ cd infra
 | `WebhookFunction` | Lambda | Python 3.13, ARM64, 512MB, 60s timeout |
 | `OAuthCallbackFunction` | Lambda | OAuth2 コールバック処理 |
 | `LambdaDepsLayer` | Lambda Layer | line-bot-sdk, boto3 等の依存パッケージ |
-| `lineAssistantAgent` | Bedrock AgentCore Runtime | General Agent (Strands Agent + Claude Sonnet 4.5) |
+| `lineAssistantAgent` | Bedrock AgentCore Runtime | Router Agent (Strands Agent + Claude, Agents as Tools) |
 | `CalendarAgentRuntime` | Bedrock AgentCore Runtime | Calendar Agent (Strands Agent + Calendar tools) |
 | `GoogleOAuthTokens` | DynamoDB | OAuth2 トークン保存 (RemovalPolicy: RETAIN) |
 | `UserSessionState` | DynamoDB | ユーザーセッション状態 (RemovalPolicy: DESTROY, TTL 有効) |
@@ -338,8 +342,7 @@ npm run deploy
 |------|------|
 | `LINE_CHANNEL_SECRET` | LINE チャネルシークレット |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE チャネルアクセストークン |
-| `AGENT_RUNTIME_ARN` | General Agent Runtime ARN (CDK が自動設定) |
-| `CALENDAR_AGENT_ENDPOINT` | Calendar Agent エンドポイント (ローカル: `http://localhost:8081`) |
+| `AGENT_RUNTIME_ARN` | Router Agent Runtime ARN (CDK が自動設定) |
 | `AWS_REGION_NAME` | AWS リージョン (CDK が自動設定) |
 | `GOOGLE_CLIENT_ID` | Google OAuth2 クライアント ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth2 クライアントシークレット |
@@ -365,4 +368,5 @@ npm run deploy
 | 変数 | 説明 |
 |------|------|
 | `BEDROCK_MODEL_ID` | Bedrock モデル ID (default: Claude Sonnet 4.5) |
+| `CALENDAR_AGENT_ENDPOINT` | Calendar Agent エンドポイント (default: `http://localhost:8081`) |
 | `LOG_LEVEL` | ログレベル (default: `INFO`) |
