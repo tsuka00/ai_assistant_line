@@ -3,6 +3,15 @@
 import logging
 import os
 
+# ローカル開発時は .env.local を読み込む
+try:
+    from dotenv import load_dotenv
+
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env.local")
+    load_dotenv(dotenv_path=env_path, override=True)
+except ImportError:
+    pass
+
 from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
@@ -18,7 +27,7 @@ SYSTEM_PROMPT = (
 
 MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID",
-    "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "global.anthropic.claude-opus-4-6-v1",
 )
 
 app = BedrockAgentCoreApp()
