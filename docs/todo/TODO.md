@@ -13,3 +13,5 @@
 | 9 | LINE Webhook URL 設定 | ✅ 完了 | API Gateway URL → LINE Console |
 | 10 | E2E テスト | ✅ 完了 | LINEからメッセージ送信テスト |
 | 11 | README.md 作成 | ✅ 完了 | セットアップ、コマンド一覧、ローカル起動、AWS詳細、アーキテクチャ |
+| 12 | CDK デプロイ用 IAM ユーザー作成 | ✅ 完了 | line-agent-deployer, profile: line-agent |
+| 13 | AWS ナレッジドキュメント作成 | ✅ 完了 | docs/knowledge/aws.md |
