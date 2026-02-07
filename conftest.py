@@ -27,6 +27,12 @@ sys.modules.setdefault("dotenv", MagicMock())
 sys.modules.setdefault("strands", MagicMock())
 sys.modules.setdefault("strands.models", MagicMock())
 
+# Google API mocks
+sys.modules.setdefault("google.oauth2.credentials", MagicMock())
+sys.modules.setdefault("google.auth.transport.requests", MagicMock())
+sys.modules.setdefault("googleapiclient", MagicMock())
+sys.modules.setdefault("googleapiclient.discovery", MagicMock())
+
 # Make agent importable as a package
 if "agent" not in sys.modules:
     sys.path.insert(0, str(ROOT))
@@ -34,6 +40,13 @@ if "agent" not in sys.modules:
     agent_pkg = importlib.util.module_from_spec(agent_pkg_spec)
     agent_pkg.__path__ = [str(ROOT / "agent")]
     sys.modules["agent"] = agent_pkg
+
+# Make agent.tools importable
+if "agent.tools" not in sys.modules:
+    tools_pkg_spec = importlib.machinery.ModuleSpec("agent.tools", None, is_package=True)
+    tools_pkg = importlib.util.module_from_spec(tools_pkg_spec)
+    tools_pkg.__path__ = [str(ROOT / "agent" / "tools")]
+    sys.modules["agent.tools"] = tools_pkg
 
 if "agent.main" not in sys.modules:
     spec = importlib.util.spec_from_file_location(
@@ -60,7 +73,7 @@ _linebot_v3 = types.ModuleType("linebot.v3")
 _linebot_v3_exceptions = types.ModuleType("linebot.v3.exceptions")
 _linebot_v3_exceptions.InvalidSignatureError = _InvalidSignatureError
 
-# -- linebot.v3.webhooks: MessageEvent / TextMessageContent need isinstance --
+# -- linebot.v3.webhooks: MessageEvent / TextMessageContent / PostbackEvent --
 
 
 class _MessageEvent:
@@ -71,9 +84,14 @@ class _TextMessageContent:
     pass
 
 
+class _PostbackEvent:
+    pass
+
+
 _linebot_v3_webhooks = types.ModuleType("linebot.v3.webhooks")
 _linebot_v3_webhooks.MessageEvent = _MessageEvent
 _linebot_v3_webhooks.TextMessageContent = _TextMessageContent
+_linebot_v3_webhooks.PostbackEvent = _PostbackEvent
 
 # -- linebot.v3.messaging: ShowLoadingAnimationRequest etc. -----------------
 
@@ -81,9 +99,7 @@ _linebot_v3_webhooks.TextMessageContent = _TextMessageContent
 class _ShowLoadingAnimationRequest:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
-            # LINE SDK uses camelCase params but exposes snake_case attrs
             setattr(self, k, v)
-            # Also set snake_case version
             import re
 
             snake = re.sub(r"(?<!^)(?=[A-Z])", "_", k).lower()
@@ -107,6 +123,49 @@ if "lambda" not in sys.modules:
     lambda_pkg = importlib.util.module_from_spec(lambda_pkg_spec)
     lambda_pkg.__path__ = [str(ROOT / "lambda")]
     sys.modules["lambda"] = lambda_pkg
+
+# Register lambda sub-packages before importing index
+# flex_messages package
+if "lambda.flex_messages" not in sys.modules:
+    fm_pkg_spec = importlib.machinery.ModuleSpec("lambda.flex_messages", None, is_package=True)
+    fm_pkg = importlib.util.module_from_spec(fm_pkg_spec)
+    fm_pkg.__path__ = [str(ROOT / "lambda" / "flex_messages")]
+    sys.modules["lambda.flex_messages"] = fm_pkg
+
+# Register lambda modules that index.py imports
+_lambda_modules = {
+    "google_auth": ROOT / "lambda" / "google_auth.py",
+    "google_calendar_api": ROOT / "lambda" / "google_calendar_api.py",
+    "flex_messages": None,  # package, already registered above
+    "flex_messages.calendar_carousel": ROOT / "lambda" / "flex_messages" / "calendar_carousel.py",
+    "flex_messages.date_picker": ROOT / "lambda" / "flex_messages" / "date_picker.py",
+    "flex_messages.time_picker": ROOT / "lambda" / "flex_messages" / "time_picker.py",
+    "flex_messages.event_confirm": ROOT / "lambda" / "flex_messages" / "event_confirm.py",
+    "flex_messages.oauth_link": ROOT / "lambda" / "flex_messages" / "oauth_link.py",
+}
+
+for mod_name, file_path in _lambda_modules.items():
+    if file_path is None:
+        continue
+    full_name = f"lambda.{mod_name}" if not mod_name.startswith("lambda.") else mod_name
+    # Also register without "lambda." prefix since Lambda code uses bare imports
+    bare_name = mod_name
+    if bare_name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(bare_name, str(file_path))
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[bare_name] = mod
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:
+            # Some modules may fail to import due to missing deps, that's OK
+            pass
+
+# Also register flex_messages package bare
+if "flex_messages" not in sys.modules:
+    fm_bare_spec = importlib.machinery.ModuleSpec("flex_messages", None, is_package=True)
+    fm_bare = importlib.util.module_from_spec(fm_bare_spec)
+    fm_bare.__path__ = [str(ROOT / "lambda" / "flex_messages")]
+    sys.modules["flex_messages"] = fm_bare
 
 if "lambda.index" not in sys.modules:
     spec = importlib.util.spec_from_file_location(

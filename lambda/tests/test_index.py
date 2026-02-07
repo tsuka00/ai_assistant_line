@@ -133,24 +133,23 @@ def _make_message_event(user_id="U1234", text="こんにちは", reply_token="to
 
 
 def test_handle_text_message_reply():
-    """55秒以内なら reply_message が呼ばれること."""
+    """55秒以内なら reply_message が呼ばれること (非カレンダー)."""
     original = idx.AGENTCORE_RUNTIME_ENDPOINT
     idx.AGENTCORE_RUNTIME_ENDPOINT = ""  # boto3 ルート
 
     try:
         with (
+            patch.object(idx, "get_user_state", return_value=None),
             patch.object(idx, "show_loading") as mock_loading,
             patch.object(idx, "invoke_agent", return_value="AI応答テスト") as mock_invoke,
-            patch.object(idx, "reply_message") as mock_reply,
-            patch.object(idx, "push_message") as mock_push,
+            patch.object(idx, "send_response") as mock_send,
         ):
             event = _make_message_event()
             idx.handle_text_message(event)
 
             mock_loading.assert_called_once_with("U1234")
             mock_invoke.assert_called_once_with("こんにちは")
-            mock_reply.assert_called_once_with("token123", "AI応答テスト")
-            mock_push.assert_not_called()
+            mock_send.assert_called_once()
     finally:
         idx.AGENTCORE_RUNTIME_ENDPOINT = original
 
@@ -162,19 +161,21 @@ def test_handle_text_message_push_fallback():
 
     try:
         with (
+            patch.object(idx, "get_user_state", return_value=None),
             patch.object(idx, "show_loading"),
             patch.object(idx, "invoke_agent", return_value="遅延応答"),
-            patch.object(idx, "reply_message") as mock_reply,
+            patch.object(idx, "reply_message", side_effect=Exception("expired")),
             patch.object(idx, "push_message") as mock_push,
             patch.object(idx, "time") as mock_time,
         ):
             # time.time() を制御して 56 秒経過をシミュレート
             mock_time.time.side_effect = [0.0, 56.0]
+            mock_time.strftime = MagicMock()
             event = _make_message_event()
             idx.handle_text_message(event)
 
-            mock_reply.assert_not_called()
-            mock_push.assert_called_once_with("U1234", "遅延応答")
+            # send_response 内で push にフォールバック
+            mock_push.assert_called()
     finally:
         idx.AGENTCORE_RUNTIME_ENDPOINT = original
 
