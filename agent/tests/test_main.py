@@ -19,10 +19,11 @@ def test_create_agent():
         result = agent_main.create_agent()
 
     mock_bm.assert_called_once()
-    mock_agent_cls.assert_called_once_with(
-        model=mock_model_instance,
-        system_prompt=agent_main.SYSTEM_PROMPT,
-    )
+    mock_agent_cls.assert_called_once()
+    call_kwargs = mock_agent_cls.call_args[1]
+    assert call_kwargs["model"] is mock_model_instance
+    assert "現在の日時:" in call_kwargs["system_prompt"]
+    assert agent_main.SYSTEM_PROMPT in call_kwargs["system_prompt"]
     assert result is mock_agent_instance
 
 

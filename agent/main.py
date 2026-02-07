@@ -37,6 +37,17 @@ MODEL_ID = os.environ.get(
 app = BedrockAgentCoreApp()
 
 
+def _build_system_prompt() -> str:
+    """現在日時を埋め込んだシステムプロンプトを生成."""
+    from datetime import datetime, timedelta, timezone
+
+    jst = timezone(timedelta(hours=9))
+    now = datetime.now(jst)
+    weekday = ["月", "火", "水", "木", "金", "土", "日"][now.weekday()]
+    date_line = f"現在の日時: {now.strftime('%Y年%m月%d日')}({weekday}) {now.strftime('%H:%M')}"
+    return f"{date_line}\n\n{SYSTEM_PROMPT}"
+
+
 def create_agent() -> Agent:
     """Create a Strands Agent with Bedrock model."""
     model = BedrockModel(
@@ -45,7 +56,7 @@ def create_agent() -> Agent:
     )
     return Agent(
         model=model,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=_build_system_prompt(),
     )
 
 
