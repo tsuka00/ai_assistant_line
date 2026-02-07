@@ -1,0 +1,1 @@
+"""LINE Flex Message ビルダー."""
