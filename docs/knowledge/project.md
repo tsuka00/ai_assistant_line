@@ -317,6 +317,37 @@ Google は `disallowed_useragent` ポリシーにより、LINE アプリ内 WebV
 | `time_picker.py` | 時間帯選択カルーセル | 午前・午後セクション、空き=緑 / 埋まり=グレー |
 | `event_confirm.py` | 作成/削除 確認画面 | 日時・タイトル表示 + タイトル編集ボタン + 送信ボタン |
 
+### Flex Message でタップ不可のボタン風要素を作る
+
+LINE Flex Message の `button` は `action` が必須で、外すことができない。
+そのため、グレー表示してもタップすると postback が発火してしまう。
+
+**解決策**: busy なスロットは `button` ではなく `box` + `text` で同じ見た目を再現する。
+`box` には `action` がないのでタップしても何も起きない。
+
+```json
+{
+  "type": "box",
+  "layout": "vertical",
+  "contents": [
+    {
+      "type": "text",
+      "text": "13:00 - 14:00",
+      "align": "center",
+      "color": "#FFFFFF",
+      "size": "sm"
+    }
+  ],
+  "backgroundColor": "#CCCCCC",
+  "cornerRadius": "md",
+  "height": "40px",
+  "justifyContent": "center",
+  "margin": "sm"
+}
+```
+
+この手法は日付ピッカー・時間帯ピッカーの両方で使用している。
+
 ### デュアル入力パターン
 
 | ユーザー入力 | 処理 | 例 |

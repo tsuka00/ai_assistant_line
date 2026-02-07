@@ -31,21 +31,43 @@ def build_date_picker(busy_dates: list[str], weeks: int = 2) -> dict:
             label = f"{current_date.month}/{current_date.day}({wd})"
             is_busy = date_str in busy_set
 
-            buttons.append(
-                {
-                    "type": "button",
-                    "action": {
-                        "type": "postback",
-                        "label": label,
-                        "data": f"action=select_date&date={date_str}",
-                        "displayText": f"{label} を選択",
-                    },
-                    "style": "primary",
-                    "color": COLOR_BUSY if is_busy else COLOR_AVAILABLE,
-                    "height": "sm",
-                    "margin": "sm",
-                }
-            )
+            if is_busy:
+                buttons.append(
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": label,
+                                "align": "center",
+                                "color": "#FFFFFF",
+                                "size": "sm",
+                            }
+                        ],
+                        "backgroundColor": COLOR_BUSY,
+                        "cornerRadius": "md",
+                        "height": "40px",
+                        "justifyContent": "center",
+                        "margin": "sm",
+                    }
+                )
+            else:
+                buttons.append(
+                    {
+                        "type": "button",
+                        "action": {
+                            "type": "postback",
+                            "label": label,
+                            "data": f"action=select_date&date={date_str}",
+                            "displayText": f"{label} を選択",
+                        },
+                        "style": "primary",
+                        "color": COLOR_AVAILABLE,
+                        "height": "sm",
+                        "margin": "sm",
+                    }
+                )
             current_date += timedelta(days=1)
 
         bubble = {

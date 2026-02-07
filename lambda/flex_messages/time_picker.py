@@ -41,25 +41,47 @@ def build_time_picker(date: str, busy_slots: list[dict]) -> dict:
 
     for start, end in TIME_SLOTS:
         is_busy = _is_slot_busy(date, start, end, busy_ranges)
-        button = {
-            "type": "button",
-            "action": {
-                "type": "postback",
-                "label": f"{start} - {end}",
-                "data": f"action=select_time&date={date}&start={start}&end={end}",
-                "displayText": f"{start} - {end} を選択",
-            },
-            "style": "primary",
-            "color": COLOR_BUSY if is_busy else COLOR_AVAILABLE,
-            "height": "sm",
-            "margin": "sm",
-        }
+
+        if is_busy:
+            # busy: タップ不可のテキストボックス
+            element = {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"{start} - {end}",
+                        "align": "center",
+                        "color": "#FFFFFF",
+                        "size": "sm",
+                    }
+                ],
+                "backgroundColor": COLOR_BUSY,
+                "cornerRadius": "md",
+                "height": "40px",
+                "justifyContent": "center",
+                "margin": "sm",
+            }
+        else:
+            element = {
+                "type": "button",
+                "action": {
+                    "type": "postback",
+                    "label": f"{start} - {end}",
+                    "data": f"action=select_time&date={date}&start={start}&end={end}",
+                    "displayText": f"{start} - {end} を選択",
+                },
+                "style": "primary",
+                "color": COLOR_AVAILABLE,
+                "height": "sm",
+                "margin": "sm",
+            }
 
         hour = int(start.split(":")[0])
         if hour < 12:
-            am_buttons.append(button)
+            am_buttons.append(element)
         else:
-            pm_buttons.append(button)
+            pm_buttons.append(element)
 
     contents = []
 
