@@ -52,6 +52,7 @@
 | 48 | LIFF エンドポイント URL を本番 URL に差し替え | ⏳ 未着手 | デプロイ後に LINE Developer Console で ngrok → 本番 URL に変更 |
 | 49 | DynamoDB テーブルを環境ごとに分離 (dev/prod) | ⏳ 未着手 | 現在ローカルと本番で同じテーブルを共有中 |
 | 50 | OAuth 同意画面を External に変更 & Google 審査申請 | ⏳ 未着手 | 現在 Internal（組織内のみ）→ 外部ユーザー公開に必要 |
+| 51 | Agent レスポンスの Markdown 排除 & LINE フォーマット対応 | ✅ 完了 | システムプロンプト修正 (calendar_agent, main) |
 | - | Google Maps エージェント作成 | ⏳ 未着手 | 場所検索・経路案内・ジオコーディング |
 | - | Gmail エージェント作成 | ⏳ 未着手 | メール送信・検索・閲覧 |
 | - | エージェントルーター実装 | ⏳ 未着手 | ユーザー入力→適切なエージェントへ振り分け |
