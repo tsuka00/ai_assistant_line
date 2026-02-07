@@ -33,8 +33,6 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 # AgentCore
 AGENT_RUNTIME_ARN = os.environ.get("AGENT_RUNTIME_ARN", "")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-
-# ローカル開発用
 AGENTCORE_RUNTIME_ENDPOINT = os.environ.get("AGENTCORE_RUNTIME_ENDPOINT", "")
 
 TIMEOUT_SECONDS = 55  # Lambda 60s timeout の 5s 手前
@@ -187,18 +185,18 @@ def lambda_handler(event, context):
 if __name__ == "__main__":
     from dotenv import load_dotenv
 
-    load_dotenv()
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env.local")
+    load_dotenv(dotenv_path=env_path, override=True)
 
-    # 環境変数を再読み込み
-    CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
-    CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+    # .env.local の値でグローバル変数を再設定
+    CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
+    CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
     AGENTCORE_RUNTIME_ENDPOINT = os.environ.get(
         "AGENTCORE_RUNTIME_ENDPOINT", "http://localhost:8080"
     )
 
-    # グローバル変数を更新
-    parser.__init__(CHANNEL_SECRET)
-    configuration.access_token = CHANNEL_ACCESS_TOKEN
+    parser = WebhookParser(CHANNEL_SECRET)
+    configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
     from fastapi import FastAPI, Header, Request
 
