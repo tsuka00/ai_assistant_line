@@ -10,13 +10,10 @@ from strands.models import BedrockModel
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = os.environ.get(
-    "SYSTEM_PROMPT",
-    (
-        "あなたは親切で知識豊富な日本語AIアシスタントです。"
-        "ユーザーの質問に丁寧かつ簡潔に回答してください。"
-        "回答はLINEメッセージとして読みやすい長さに収めてください。"
-    ),
+SYSTEM_PROMPT = (
+    "あなたは親切で知識豊富な日本語AIアシスタントです。"
+    "ユーザーの質問に丁寧かつ簡潔に回答してください。"
+    "回答はLINEメッセージとして読みやすい長さに収めてください。"
 )
 
 MODEL_ID = os.environ.get(
