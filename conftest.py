@@ -41,13 +41,6 @@ if "agent" not in sys.modules:
     agent_pkg.__path__ = [str(ROOT / "agent")]
     sys.modules["agent"] = agent_pkg
 
-# Make agent.tools importable
-if "agent.tools" not in sys.modules:
-    tools_pkg_spec = importlib.machinery.ModuleSpec("agent.tools", None, is_package=True)
-    tools_pkg = importlib.util.module_from_spec(tools_pkg_spec)
-    tools_pkg.__path__ = [str(ROOT / "agent" / "tools")]
-    sys.modules["agent.tools"] = tools_pkg
-
 if "agent.main" not in sys.modules:
     spec = importlib.util.spec_from_file_location(
         "agent.main", str(ROOT / "agent" / "main.py")
@@ -141,6 +134,7 @@ _lambda_modules = {
     "flex_messages.date_picker": ROOT / "lambda" / "flex_messages" / "date_picker.py",
     "flex_messages.time_picker": ROOT / "lambda" / "flex_messages" / "time_picker.py",
     "flex_messages.event_confirm": ROOT / "lambda" / "flex_messages" / "event_confirm.py",
+    "flex_messages.place_carousel": ROOT / "lambda" / "flex_messages" / "place_carousel.py",
     "flex_messages.oauth_link": ROOT / "lambda" / "flex_messages" / "oauth_link.py",
 }
 

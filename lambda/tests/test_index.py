@@ -232,3 +232,53 @@ def test_show_loading():
     call_arg = mock_api.show_loading_animation.call_args[0][0]
     assert call_arg.chat_id == "U9999"
     assert call_arg.loading_seconds == 60
+
+
+# ---------------------------------------------------------------------------
+# convert_agent_response tests
+# ---------------------------------------------------------------------------
+
+
+def test_convert_agent_response_place_search():
+    """place_search タイプで Flex カルーセルが返ること."""
+    response = json.dumps({
+        "type": "place_search",
+        "message": "「渋谷カフェ」の検索結果です。",
+        "places": [
+            {"name": "Cafe A", "lat": "35.658", "lon": "139.701"},
+        ],
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    # TextMessage (message) + FlexMessage
+    assert len(messages) == 2
+
+
+def test_convert_agent_response_place_recommend():
+    """place_recommend タイプで Flex カルーセルが返ること."""
+    response = json.dumps({
+        "type": "place_recommend",
+        "message": "おすすめの場所です。",
+        "places": [
+            {
+                "name": "おしゃれカフェ",
+                "description": "静かな雰囲気",
+                "latitude": 35.661,
+                "longitude": 139.703,
+                "rating": 4.5,
+                "minPrice": 800,
+            },
+        ],
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 2
+
+
+def test_convert_agent_response_place_empty():
+    """place_search で場所が空の場合テキストが返ること."""
+    response = json.dumps({
+        "type": "place_search",
+        "message": "",
+        "places": [],
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 1

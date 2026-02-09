@@ -31,6 +31,7 @@ from flex_messages.event_confirm import (
     build_delete_confirmation,
     build_event_confirmation,
 )
+from flex_messages.place_carousel import build_place_carousel
 from flex_messages.time_picker import build_time_picker
 
 logger = logging.getLogger()
@@ -272,6 +273,21 @@ def convert_agent_response(response_text: str, user_id: str) -> list:
             except (ValueError, KeyError):
                 continue
         flex = build_date_picker(list(busy_dates))
+        messages = []
+        if message_text:
+            messages.append(TextMessage(text=message_text))
+        messages.append(_build_flex_message(flex))
+        return messages
+
+    if resp_type in ("place_search", "place_recommend"):
+        places = data.get("places", [])
+        flex = build_place_carousel(
+            places,
+            message_text,
+            place_type="recommend" if resp_type == "place_recommend" else "search",
+        )
+        if flex.get("type") == "text":
+            return [TextMessage(text=flex["text"])]
         messages = []
         if message_text:
             messages.append(TextMessage(text=message_text))

@@ -61,6 +61,13 @@
 | 57 | Google 認証情報の受け渡し設計 | ✅ 完了 | Lambda → Router (_google_credentials) → Calendar の credentials フロー |
 | 58 | Router Agent のユニットテスト | ✅ 完了 | 全33テスト合格 (Router + Lambda + Flex + OAuth) |
 | 59 | ローカル E2E テスト (Router 経由) | ✅ 完了 | LINE → Lambda → Router → Calendar の全フロー確認済み |
-| - | Google Maps エージェント作成 | ⏳ 未着手 | 場所検索・経路案内・ジオコーディング |
+| 60 | agent/tools/google_maps.py 作成 — search_place @tool | ✅ 完了 | GET Vercel /api/search?q={query} を呼び出し、場所一覧を返す |
+| 61 | agent/tools/google_maps.py 作成 — recommend_place @tool | ✅ 完了 | POST Vercel /api/ai/recommend を呼び出し、AI おすすめ場所を返す |
+| 62 | agent/main.py — search_place / recommend_place をツール登録 | ✅ 完了 | create_agent() の tools[] に追加 |
+| 63 | agent/main.py — システムプロンプトにマップ系ルーティングルール追加 | ✅ 完了 | 場所検索→search_place、おすすめ→recommend_place の振り分けルール |
+| 64 | .env.example / .env / .env.local に MAPS_API_BASE_URL 追加 | ✅ 完了 | https://myplace-blush.vercel.app |
+| 65 | Google Maps @tool のユニットテスト作成 | ⏳ 未着手 | HTTP モック + レスポンス検証 |
+| 66 | ローカル E2E テスト (Maps @tool 経由) | ⏳ 未着手 | LINE → Router → search_place / recommend_place の動作確認 |
+| 67 | LINE 内の Maps 表示 UI/UX 検討・実装 | ✅ 完了 | Flex Message カルーセル（静的地図画像付き）、全41テスト合格 |
 | - | Gmail エージェント作成 | ⏳ 未着手 | メール送信・検索・閲覧 |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |

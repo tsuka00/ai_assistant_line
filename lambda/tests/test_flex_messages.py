@@ -13,6 +13,7 @@ from flex_messages.event_confirm import (
     build_event_confirmation,
 )
 from flex_messages.oauth_link import build_oauth_link_message
+from flex_messages.place_carousel import build_place_carousel
 from flex_messages.time_picker import build_time_picker
 
 
@@ -141,3 +142,60 @@ class TestEventConfirmation:
         footer_buttons = result["contents"]["footer"]["contents"]
         assert footer_buttons[0]["action"]["data"] == "action=cancel"
         assert "confirm_delete" in footer_buttons[1]["action"]["data"]
+
+
+class TestPlaceCarousel:
+    def test_empty_places(self):
+        result = build_place_carousel([])
+        assert result["type"] == "text"
+        assert "見つかりませんでした" in result["text"]
+
+    def test_search_single_place(self):
+        places = [
+            {"name": "渋谷カフェ", "lat": "35.6580", "lon": "139.7016"},
+        ]
+        result = build_place_carousel(places, "「渋谷カフェ」の検索結果です。", place_type="search")
+        assert result["type"] == "flex"
+        carousel = result["contents"]
+        assert carousel["type"] == "carousel"
+        assert len(carousel["contents"]) == 1
+        bubble = carousel["contents"][0]
+        # body に場所名
+        assert bubble["body"]["contents"][0]["text"] == "渋谷カフェ"
+        # footer に「地図を開く」ボタン
+        assert bubble["footer"]["contents"][0]["action"]["label"] == "地図を開く"
+        assert "35.6580,139.7016" in bubble["footer"]["contents"][0]["action"]["uri"]
+
+    def test_recommend_place_with_rating(self):
+        places = [
+            {
+                "name": "おしゃれカフェ",
+                "description": "静かで落ち着いた雰囲気",
+                "latitude": 35.6614,
+                "longitude": 139.7036,
+                "rating": 4.2,
+                "minPrice": 600,
+            },
+        ]
+        result = build_place_carousel(places, "おすすめの場所です。", place_type="recommend")
+        assert result["type"] == "flex"
+        bubble = result["contents"]["contents"][0]
+        body_texts = [c.get("text", "") for c in bubble["body"]["contents"]]
+        assert "おしゃれカフェ" in body_texts
+        assert "静かで落ち着いた雰囲気" in body_texts
+        # 評価 & 価格
+        assert any("4.2" in t and "600" in t for t in body_texts)
+
+    def test_max_12_places(self):
+        places = [
+            {"name": f"Place {i}", "lat": "35.0", "lon": "139.0"}
+            for i in range(15)
+        ]
+        result = build_place_carousel(places)
+        assert len(result["contents"]["contents"]) == 12
+
+    def test_no_footer_without_coordinates(self):
+        places = [{"name": "不明な場所", "lat": "", "lon": ""}]
+        result = build_place_carousel(places, place_type="search")
+        bubble = result["contents"]["contents"][0]
+        assert "footer" not in bubble
