@@ -292,7 +292,7 @@ def convert_agent_response(response_text: str, user_id: str) -> list:
             QuickReplyItem(action=LocationAction(label="📍 位置情報を送る")),
         ])
         return [TextMessage(
-            text=message_text or "位置情報を送ってください",
+            text=message_text or "お近くのお店を探すので、位置情報を送ってもらえますか？",
             quick_reply=quick_reply,
         )]
 

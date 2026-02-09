@@ -167,7 +167,7 @@ def search_place(query: str) -> str:
         })
 
     raw_result = json.dumps(
-        {"type": "place_search", "message": f"「{query}」の検索結果です。", "places": results},
+        {"type": "place_search", "message": f"「{query}」で見つかったお店です！", "places": results},
         ensure_ascii=False,
     )
     _maps_agent_result = raw_result
@@ -224,7 +224,7 @@ def recommend_place(prompt: str) -> str:
         })
 
     raw_result = json.dumps(
-        {"type": "place_recommend", "message": "おすすめの場所です。", "places": results},
+        {"type": "place_recommend", "message": "こちらのお店はいかがでしょうか？", "places": results},
         ensure_ascii=False,
     )
     _maps_agent_result = raw_result
@@ -235,10 +235,11 @@ def recommend_place(prompt: str) -> str:
 def request_location(reason: str) -> str:
     """ユーザーの現在地が必要なときに呼びます。
     エリア名が明示されておらず「近くの」「この辺の」など現在地に依存する質問のときに使います。
-    reason には位置情報が必要な理由を簡潔に書いてください。"""
+    reason にはユーザーに親しみやすく伝える短い理由を書いてください。
+    例: 「近くのカフェを探したい」「この辺のおすすめレストランを見つけたい」"""
     global _maps_agent_result
     raw_result = json.dumps(
-        {"type": "location_request", "message": f"{reason}のために、位置情報を送ってください"},
+        {"type": "location_request", "message": f"{reason}ので、位置情報を送ってもらえますか？"},
         ensure_ascii=False,
     )
     _maps_agent_result = raw_result

@@ -61,7 +61,7 @@ def test_request_location_tool():
     parsed = json.loads(result)
 
     assert parsed["type"] == "location_request"
-    assert "位置情報を送ってください" in parsed["message"]
+    assert "位置情報を送ってもらえますか" in parsed["message"]
     assert "近くのカフェを探す" in parsed["message"]
     assert agent_main._maps_agent_result == result
 

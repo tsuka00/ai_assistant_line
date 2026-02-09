@@ -296,13 +296,13 @@ def test_convert_agent_response_location_request():
 
     response = json.dumps({
         "type": "location_request",
-        "message": "近くのカフェを探すために、位置情報を送ってください",
+        "message": "近くのカフェを探したいので、位置情報を送ってもらえますか？",
     })
     messages = idx.convert_agent_response(response, "U1234")
     assert len(messages) == 1
     # TextMessage の呼び出し引数を確認
     call_kwargs = idx.TextMessage.call_args[1]
-    assert "位置情報を送ってください" in call_kwargs["text"]
+    assert "位置情報を送ってもらえますか" in call_kwargs["text"]
     # quick_reply が渡されていること
     assert "quick_reply" in call_kwargs
     qr = call_kwargs["quick_reply"]
