@@ -50,6 +50,25 @@ def test_invoke_empty_prompt():
     assert result_no_key["status"] == "error"
 
 
+def test_request_location_tool():
+    """request_location ツールが正しい JSON を返し _maps_agent_result に設定されること."""
+    import json
+
+    # Reset global
+    agent_main._maps_agent_result = None
+
+    result = agent_main.request_location(reason="近くのカフェを探す")
+    parsed = json.loads(result)
+
+    assert parsed["type"] == "location_request"
+    assert "位置情報を送ってください" in parsed["message"]
+    assert "近くのカフェを探す" in parsed["message"]
+    assert agent_main._maps_agent_result == result
+
+    # cleanup
+    agent_main._maps_agent_result = None
+
+
 def test_invoke_agent_exception():
     """Agent が例外を投げた場合のエラーハンドリング."""
     mock_agent = MagicMock()

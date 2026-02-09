@@ -62,6 +62,15 @@ recommend_place を呼ぶべきケース:
 ・「子連れで行けるレストラン」「静かに作業できるカフェ」
 ・具体的な店名ではなく、条件や好みでの提案を求めている場合 → recommend_place
 
+request_location を呼ぶべきケース:
+・「近くの」「ここら辺の」「この辺の」「周辺の」など、ユーザーの現在地に依存する質問
+・エリア名が明示されていない場所検索・おすすめリクエスト → request_location
+・注意: 「渋谷のカフェ」のようにエリアが明示されている場合は直接 search_place / recommend_place を使う
+
+【位置情報の扱い】
+・プロンプトに「[ユーザーの現在地: 緯度XX, 経度XX]」が含まれている場合はその座標を使って search_place / recommend_place を呼ぶ
+・位置情報が含まれている場合は request_location を呼ばない
+
 自分で直接回答するケース:
 ・一般的な質問・雑談・知識系の質問（予定・場所検索に全く関係ないもの）
 
@@ -222,6 +231,20 @@ def recommend_place(prompt: str) -> str:
     return raw_result
 
 
+@tool
+def request_location(reason: str) -> str:
+    """ユーザーの現在地が必要なときに呼びます。
+    エリア名が明示されておらず「近くの」「この辺の」など現在地に依存する質問のときに使います。
+    reason には位置情報が必要な理由を簡潔に書いてください。"""
+    global _maps_agent_result
+    raw_result = json.dumps(
+        {"type": "location_request", "message": f"{reason}のために、位置情報を送ってください"},
+        ensure_ascii=False,
+    )
+    _maps_agent_result = raw_result
+    return raw_result
+
+
 def _build_system_prompt() -> str:
     """現在日時を埋め込んだシステムプロンプトを生成."""
     from datetime import datetime, timedelta, timezone
@@ -242,7 +265,7 @@ def create_agent() -> Agent:
     return Agent(
         model=model,
         system_prompt=_build_system_prompt(),
-        tools=[calendar_agent, search_place, recommend_place],
+        tools=[calendar_agent, search_place, recommend_place, request_location],
     )
 
 

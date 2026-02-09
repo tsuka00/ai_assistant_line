@@ -15,13 +15,21 @@ from linebot.v3.messaging import (
     Configuration,
     FlexContainer,
     FlexMessage,
+    LocationAction,
     MessagingApi,
     PushMessageRequest,
+    QuickReply,
+    QuickReplyItem,
     ReplyMessageRequest,
     ShowLoadingAnimationRequest,
     TextMessage,
 )
-from linebot.v3.webhooks import MessageEvent, PostbackEvent, TextMessageContent
+from linebot.v3.webhooks import (
+    LocationMessageContent,
+    MessageEvent,
+    PostbackEvent,
+    TextMessageContent,
+)
 
 import google_auth
 import google_calendar_api
@@ -279,6 +287,15 @@ def convert_agent_response(response_text: str, user_id: str) -> list:
         messages.append(_build_flex_message(flex))
         return messages
 
+    if resp_type == "location_request":
+        quick_reply = QuickReply(items=[
+            QuickReplyItem(action=LocationAction(label="📍 位置情報を送る")),
+        ])
+        return [TextMessage(
+            text=message_text or "位置情報を送ってください",
+            quick_reply=quick_reply,
+        )]
+
     if resp_type in ("place_search", "place_recommend"):
         places = data.get("places", [])
         flex = build_place_carousel(
@@ -351,6 +368,10 @@ def handle_text_message(event: MessageEvent) -> None:
 
     # ユーザーステート確認 (タイトル編集中など)
     user_state = get_user_state(user_id)
+    if user_state and user_state.get("action") == "waiting_location":
+        # 位置情報待ちの状態でテキストが来た場合はステートをクリアして通常処理へ
+        clear_user_state(user_id)
+
     if user_state and user_state.get("action") == "edit_title":
         # タイトル編集モード: 入力テキストを新しいタイトルとして確認画面を表示
         clear_user_state(user_id)
@@ -382,7 +403,60 @@ def handle_text_message(event: MessageEvent) -> None:
     elapsed = time.time() - start_time
     logger.info("Agent response in %.1fs", elapsed)
 
-    # 3. レスポンス変換 & 送信
+    # 3. location_request の場合は元クエリをステートに保存
+    try:
+        resp_data = json.loads(ai_response)
+        if resp_data.get("type") == "location_request":
+            save_user_state(user_id, {
+                "action": "waiting_location",
+                "original_query": user_text,
+            })
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # 4. レスポンス変換 & 送信
+    messages = convert_agent_response(ai_response, user_id)
+    send_response(reply_token, user_id, messages, elapsed)
+
+
+def handle_location_message(event: MessageEvent) -> None:
+    """位置情報メッセージを処理."""
+    user_id = event.source.user_id
+    reply_token = event.reply_token
+    latitude = event.message.latitude
+    longitude = event.message.longitude
+
+    logger.info("Location from %s: lat=%s, lon=%s", user_id, latitude, longitude)
+
+    # ステート確認: waiting_location なら元クエリを復元
+    user_state = get_user_state(user_id)
+    if user_state and user_state.get("action") == "waiting_location":
+        original_query = user_state.get("original_query", "この場所の周辺でおすすめを教えて")
+        clear_user_state(user_id)
+        prompt = f"[ユーザーの現在地: 緯度{latitude}, 経度{longitude}] {original_query}"
+    else:
+        # 自発的な位置情報送信
+        prompt = f"[ユーザーの現在地: 緯度{latitude}, 経度{longitude}] この場所の周辺でおすすめを教えて"
+
+    # ローディングアニメーション
+    try:
+        show_loading(user_id)
+    except Exception:
+        logger.warning("Failed to show loading animation", exc_info=True)
+
+    # Agent 呼び出し
+    start_time = time.time()
+    try:
+        ai_response = invoke_router_agent(prompt, user_id)
+    except Exception:
+        logger.error("Agent invocation failed", exc_info=True)
+        ai_response = json.dumps(
+            {"type": "text", "message": "申し訳ありません。エラーが発生しました。もう一度お試しください。"}
+        )
+
+    elapsed = time.time() - start_time
+    logger.info("Agent response in %.1fs", elapsed)
+
     messages = convert_agent_response(ai_response, user_id)
     send_response(reply_token, user_id, messages, elapsed)
 
@@ -608,6 +682,10 @@ def lambda_handler(event, context):
             ev.message, TextMessageContent
         ):
             handle_text_message(ev)
+        elif isinstance(ev, MessageEvent) and isinstance(
+            ev.message, LocationMessageContent
+        ):
+            handle_location_message(ev)
         elif isinstance(ev, PostbackEvent):
             handle_postback(ev)
 
@@ -663,6 +741,10 @@ if __name__ == "__main__":
                 ev.message, TextMessageContent
             ):
                 handle_text_message(ev)
+            elif isinstance(ev, MessageEvent) and isinstance(
+                ev.message, LocationMessageContent
+            ):
+                handle_location_message(ev)
             elif isinstance(ev, PostbackEvent):
                 handle_postback(ev)
 

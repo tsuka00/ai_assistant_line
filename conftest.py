@@ -24,7 +24,9 @@ _mock_app_instance.entrypoint = lambda fn: fn  # pass-through decorator
 
 sys.modules.setdefault("bedrock_agentcore", _mock_bedrock_agentcore)
 sys.modules.setdefault("dotenv", MagicMock())
-sys.modules.setdefault("strands", MagicMock())
+_mock_strands = MagicMock()
+_mock_strands.tool = lambda fn: fn  # pass-through decorator
+sys.modules.setdefault("strands", _mock_strands)
 sys.modules.setdefault("strands.models", MagicMock())
 
 # Google API mocks
@@ -81,10 +83,15 @@ class _PostbackEvent:
     pass
 
 
+class _LocationMessageContent:
+    pass
+
+
 _linebot_v3_webhooks = types.ModuleType("linebot.v3.webhooks")
 _linebot_v3_webhooks.MessageEvent = _MessageEvent
 _linebot_v3_webhooks.TextMessageContent = _TextMessageContent
 _linebot_v3_webhooks.PostbackEvent = _PostbackEvent
+_linebot_v3_webhooks.LocationMessageContent = _LocationMessageContent
 
 # -- linebot.v3.messaging: ShowLoadingAnimationRequest etc. -----------------
 
@@ -99,8 +106,29 @@ class _ShowLoadingAnimationRequest:
             setattr(self, snake, v)
 
 
+class _QuickReply:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class _QuickReplyItem:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class _LocationAction:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
 _linebot_v3_messaging = MagicMock()
 _linebot_v3_messaging.ShowLoadingAnimationRequest = _ShowLoadingAnimationRequest
+_linebot_v3_messaging.QuickReply = _QuickReply
+_linebot_v3_messaging.QuickReplyItem = _QuickReplyItem
+_linebot_v3_messaging.LocationAction = _LocationAction
 # WebhookParser needs to be a MagicMock so parser = WebhookParser(...) works
 _linebot_v3.WebhookParser = MagicMock()
 

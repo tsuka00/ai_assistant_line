@@ -282,3 +282,124 @@ def test_convert_agent_response_place_empty():
     })
     messages = idx.convert_agent_response(response, "U1234")
     assert len(messages) == 1
+
+
+# ---------------------------------------------------------------------------
+# location_request tests
+# ---------------------------------------------------------------------------
+
+
+def test_convert_agent_response_location_request():
+    """location_request タイプで QuickReply 付き TextMessage が返ること."""
+    # TextMessage の呼び出し記録をリセット
+    idx.TextMessage.reset_mock()
+
+    response = json.dumps({
+        "type": "location_request",
+        "message": "近くのカフェを探すために、位置情報を送ってください",
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 1
+    # TextMessage の呼び出し引数を確認
+    call_kwargs = idx.TextMessage.call_args[1]
+    assert "位置情報を送ってください" in call_kwargs["text"]
+    # quick_reply が渡されていること
+    assert "quick_reply" in call_kwargs
+    qr = call_kwargs["quick_reply"]
+    assert hasattr(qr, "items")
+    assert len(qr.items) == 1
+    # LocationAction であること
+    item = qr.items[0]
+    assert hasattr(item, "action")
+    assert hasattr(item.action, "label")
+
+
+def test_handle_location_message_with_state():
+    """waiting_location ステートがある場合、元クエリ + 位置情報で Agent を再呼び出しすること."""
+    event = MagicMock()
+    event.source.user_id = "U1234"
+    event.reply_token = "token_loc"
+    event.message.latitude = 35.6812
+    event.message.longitude = 139.7671
+
+    waiting_state = {"action": "waiting_location", "original_query": "近くのカフェ教えて"}
+
+    with (
+        patch.object(idx, "get_user_state", return_value=waiting_state),
+        patch.object(idx, "clear_user_state") as mock_clear,
+        patch.object(idx, "show_loading"),
+        patch.object(idx, "invoke_router_agent", return_value="AI応答") as mock_invoke,
+        patch.object(idx, "send_response") as mock_send,
+    ):
+        idx.handle_location_message(event)
+
+        mock_clear.assert_called_once_with("U1234")
+        # プロンプトに位置情報と元クエリが含まれること
+        call_args = mock_invoke.call_args[0]
+        prompt = call_args[0]
+        assert "緯度35.6812" in prompt
+        assert "経度139.7671" in prompt
+        assert "近くのカフェ教えて" in prompt
+        mock_send.assert_called_once()
+
+
+def test_handle_location_message_without_state():
+    """ステートなしの自発的位置情報送信でデフォルトプロンプトが使われること."""
+    event = MagicMock()
+    event.source.user_id = "U5678"
+    event.reply_token = "token_loc2"
+    event.message.latitude = 34.6937
+    event.message.longitude = 135.5023
+
+    with (
+        patch.object(idx, "get_user_state", return_value=None),
+        patch.object(idx, "show_loading"),
+        patch.object(idx, "invoke_router_agent", return_value="AI応答") as mock_invoke,
+        patch.object(idx, "send_response"),
+    ):
+        idx.handle_location_message(event)
+
+        call_args = mock_invoke.call_args[0]
+        prompt = call_args[0]
+        assert "緯度34.6937" in prompt
+        assert "経度135.5023" in prompt
+        assert "周辺でおすすめ" in prompt
+
+
+def test_handle_text_message_clears_waiting_location():
+    """waiting_location 状態でテキストが来たらステートクリアして通常処理すること."""
+    waiting_state = {"action": "waiting_location", "original_query": "近くのカフェ"}
+
+    with (
+        patch.object(idx, "get_user_state", return_value=waiting_state),
+        patch.object(idx, "clear_user_state") as mock_clear,
+        patch.object(idx, "show_loading"),
+        patch.object(idx, "invoke_router_agent", return_value="テスト応答") as mock_invoke,
+        patch.object(idx, "send_response"),
+    ):
+        event = _make_message_event(text="渋谷のカフェ教えて")
+        idx.handle_text_message(event)
+
+        # ステートがクリアされ、通常テキスト処理が行われること
+        mock_clear.assert_called_once_with("U1234")
+        mock_invoke.assert_called_once_with("渋谷のカフェ教えて", "U1234")
+
+
+def test_lambda_handler_location_message():
+    """LocationMessageContent のディスパッチが正しいこと."""
+    from linebot.v3.webhooks import LocationMessageContent, MessageEvent
+
+    mock_event = MessageEvent()
+    mock_event.message = LocationMessageContent()
+    mock_event.source = MagicMock()
+    mock_event.reply_token = "tok"
+
+    with (
+        patch.object(idx, "parser") as mock_parser,
+        patch.object(idx, "handle_location_message") as mock_handle,
+    ):
+        mock_parser.parse.return_value = [mock_event]
+        event = {"body": '{"events":[]}', "headers": {"x-line-signature": "valid"}}
+        result = idx.lambda_handler(event, None)
+        assert result["statusCode"] == 200
+        mock_handle.assert_called_once_with(mock_event)
