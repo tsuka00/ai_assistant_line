@@ -57,12 +57,11 @@ def test_request_location_tool():
     # Reset global
     agent_main._maps_agent_result = None
 
-    result = agent_main.request_location(reason="近くのカフェを探す")
+    result = agent_main.request_location(message="近くのカフェをお探しするので、位置情報を送ってもらえますか？")
     parsed = json.loads(result)
 
     assert parsed["type"] == "location_request"
-    assert "位置情報を送ってもらえますか" in parsed["message"]
-    assert "近くのカフェを探す" in parsed["message"]
+    assert parsed["message"] == "近くのカフェをお探しするので、位置情報を送ってもらえますか？"
     assert agent_main._maps_agent_result == result
 
     # cleanup

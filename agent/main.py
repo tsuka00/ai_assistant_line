@@ -232,14 +232,14 @@ def recommend_place(prompt: str) -> str:
 
 
 @tool
-def request_location(reason: str) -> str:
+def request_location(message: str) -> str:
     """ユーザーの現在地が必要なときに呼びます。
     エリア名が明示されておらず「近くの」「この辺の」など現在地に依存する質問のときに使います。
-    reason にはユーザーに親しみやすく伝える短い理由を書いてください。
-    例: 「近くのカフェを探したい」「この辺のおすすめレストランを見つけたい」"""
+    message にはユーザーに位置情報の送信をお願いする親しみやすいメッセージを書いてください。
+    例: 「近くのカフェをお探しするので、位置情報を送ってもらえますか？」"""
     global _maps_agent_result
     raw_result = json.dumps(
-        {"type": "location_request", "message": f"{reason}ので、位置情報を送ってもらえますか？"},
+        {"type": "location_request", "message": message},
         ensure_ascii=False,
     )
     _maps_agent_result = raw_result
