@@ -70,8 +70,11 @@
 | 66 | ローカル E2E テスト (Maps @tool 経由) | ✅ 完了 | LINE → Router → search_place / recommend_place → Flex カルーセル表示確認済み |
 | 67 | LINE 内の Maps 表示 UI/UX 検討・実装 | ✅ 完了 | Flex Message カルーセル（静的地図画像付き）、全41テスト合格 |
 | - | Gmail エージェント作成 | ⏳ 未着手 | メール送信・検索・閲覧 |
-| 68 | agent/main.py — request_location ツール実装 | ✅ 完了 | 位置情報リクエスト用ツール + システムプロンプト更新 |
-| 69 | lambda/index.py — LocationMessage ハンドラ実装 | ✅ 完了 | QuickReply 生成 + DynamoDB ステート管理 + 再呼び出し |
+| 68 | request_location ツール実装 | ✅ 完了 | agent/tools/google_maps.py に切り出し + システムプロンプト更新 |
+| 69 | LocationMessage ハンドラ実装 | ✅ 完了 | QuickReply 生成 + DynamoDB ステート管理 + 再呼び出し |
 | 70 | conftest.py / テスト追加 | ✅ 完了 | LocationMessageContent スタブ + QuickReply スタブ + 全47テスト合格 |
-| 71 | Pseudo-GPS ローカル E2E テスト | ⏳ 未着手 | ngrok → LINE「近くのカフェ」→ QuickReply → 位置情報 → カルーセル |
+| 71 | Pseudo-GPS ローカル E2E テスト | ✅ 完了 | ngrok → LINE「近くのカフェ」→ QuickReply → 位置情報 → カルーセル表示確認済み |
+| 72 | Maps ツールを agent/tools/google_maps.py に分離 | ✅ 完了 | search_place / recommend_place / request_location を main.py から切り出し |
+| 73 | 位置情報リクエストのメッセージトーン改善 | ✅ 完了 | 固定テンプレート廃止、LLM が自然な依頼文を生成する方式に変更 |
+| 74 | Maps ナレッジドキュメント作成 | ✅ 完了 | docs/knowledge/maps.md — API仕様・ツール設計・Pseudo-GPSフロー |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
