@@ -38,10 +38,27 @@ sys.modules.setdefault("googleapiclient.discovery", MagicMock())
 # Make agent importable as a package
 if "agent" not in sys.modules:
     sys.path.insert(0, str(ROOT))
+    # agent/ 内の bare import (from tools.xxx) を解決するため agent/ も path に追加
+    sys.path.insert(0, str(ROOT / "agent"))
     agent_pkg_spec = importlib.machinery.ModuleSpec("agent", None, is_package=True)
     agent_pkg = importlib.util.module_from_spec(agent_pkg_spec)
     agent_pkg.__path__ = [str(ROOT / "agent")]
     sys.modules["agent"] = agent_pkg
+
+# Register agent/tools package and google_maps module
+if "tools" not in sys.modules:
+    tools_pkg_spec = importlib.machinery.ModuleSpec("tools", None, is_package=True)
+    tools_pkg = importlib.util.module_from_spec(tools_pkg_spec)
+    tools_pkg.__path__ = [str(ROOT / "agent" / "tools")]
+    sys.modules["tools"] = tools_pkg
+
+if "tools.google_maps" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "tools.google_maps", str(ROOT / "agent" / "tools" / "google_maps.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["tools.google_maps"] = mod
+    spec.loader.exec_module(mod)
 
 if "agent.main" not in sys.modules:
     spec = importlib.util.spec_from_file_location(

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 # Module is pre-registered in sys.modules by conftest.py
 agent_main = sys.modules["agent.main"]
+google_maps = sys.modules["tools.google_maps"]
 
 
 def test_create_agent():
@@ -55,17 +56,17 @@ def test_request_location_tool():
     import json
 
     # Reset global
-    agent_main._maps_agent_result = None
+    google_maps.clear_maps_result()
 
-    result = agent_main.request_location(message="近くのカフェをお探しするので、位置情報を送ってもらえますか？")
+    result = google_maps.request_location(message="近くのカフェをお探しするので、位置情報を送ってもらえますか？")
     parsed = json.loads(result)
 
     assert parsed["type"] == "location_request"
     assert parsed["message"] == "近くのカフェをお探しするので、位置情報を送ってもらえますか？"
-    assert agent_main._maps_agent_result == result
+    assert google_maps.get_maps_result() == result
 
     # cleanup
-    agent_main._maps_agent_result = None
+    google_maps.clear_maps_result()
 
 
 def test_invoke_agent_exception():
