@@ -2,8 +2,9 @@
 
 LINE 上で動く AI チャットボット。
 AWS Bedrock AgentCore Runtime (Strands Agents + Claude) で AI エージェントをホストし、LINE Webhook は API Gateway + Lambda で受ける。
-Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に委譲する。
+Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に、場所検索は Maps ツールに委譲する。
 Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の閲覧・作成・更新・削除が可能。
+場所検索・おすすめ場所は Flex Message カルーセル（静的地図画像付き）でリッチ表示。
 
 ---
 
@@ -39,14 +40,18 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 5. Router Agent が LLM ベースで意図を判断
    - 一般質問・雑談 → 自分で直接回答
    - カレンダー操作 → `calendar_agent` @tool 経由で Calendar Agent に委譲
-6. Calendar Agent が Google Calendar API を呼び出し、JSON レスポンスを返却
-7. Router Agent が Calendar Agent の生 JSON をそのまま Lambda に返す (LLM の後処理をバイパス)
+   - 場所検索 → `search_place` @tool 経由で Vercel Maps API に委譲
+   - おすすめ場所 → `recommend_place` @tool 経由で Vercel Maps API に委譲
+6. Calendar Agent / Maps API が JSON レスポンスを返却
+7. Router Agent がツールの生 JSON をそのまま Lambda に返す (LLM の後処理をバイパス)
 8. Lambda が Agent レスポンスの type フィールドに応じて Flex Message を構築
    - `calendar_events` → 予定一覧カルーセル
    - `date_selection` → 日付選択カルーセル (空き=緑 / 埋まり=グレー)
+   - `place_search` → 場所カルーセル (静的地図画像 + 地図を開くボタン)
+   - `place_recommend` → おすすめカルーセル (地図画像 + 説明 + 評価・価格)
    - `event_created` / `event_deleted` → 確認メッセージ
    - テキスト → そのまま返信
-8. Lambda が LINE Messaging API 経由でユーザーに応答を返信
+9. Lambda が LINE Messaging API 経由でユーザーに応答を返信
    - 55 秒以内: Reply API
    - 55 秒超過: Push API にフォールバック
 
@@ -76,7 +81,7 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 ```
 assistant_agent_line/
 ├── agent/                         # Strands Agent (AgentCore Container)
-│   ├── main.py                    # Router Agent エントリポイント (Agents as Tools)
+│   ├── main.py                    # Router Agent エントリポイント (Agents as Tools + Maps tools)
 │   ├── calendar_agent.py          # Calendar Agent (port 8081)
 │   ├── Dockerfile.calendar        # Calendar Agent Docker
 │   ├── tools/
@@ -90,6 +95,7 @@ assistant_agent_line/
 │   ├── flex_messages/             # Flex Message ビルダー
 │   │   ├── oauth_link.py          # OAuth 連携リンクカード
 │   │   ├── calendar_carousel.py   # 予定一覧カルーセル
+│   │   ├── place_carousel.py      # 場所カルーセル (静的地図画像付き)
 │   │   ├── date_picker.py         # 日付選択 (緑=空き, グレー=埋まり)
 │   │   ├── time_picker.py         # 時間帯選択
 │   │   └── event_confirm.py       # 作成/削除 確認画面
@@ -129,7 +135,7 @@ assistant_agent_line/
 | Docker | latest | Lambda Layer ビルド / AgentCore ローカル |
 | ngrok | latest | ローカル開発時の LINE Webhook トンネル |
 
-### GCP セットアップ (Google カレンダー連携)
+### GCP セットアップ (Google カレンダー連携 + Static Maps)
 
 1. **Google Cloud プロジェクト作成** & Calendar API を有効化
 2. **OAuth2 クライアント作成** (認証情報 → OAuth 2.0 クライアント ID → ウェブアプリケーション)
@@ -137,6 +143,14 @@ assistant_agent_line/
 3. **LIFF アプリ作成** (LINE Developer Console → LIFF タブ)
    - エンドポイント URL: `https://<ngrok-domain>/liff/oauth` (ローカル) or 本番 URL
    - LIFF ID を `.env.local` の `LIFF_ID` に設定
+4. **Maps Static API を有効化** & API キー作成 (場所カルーセルの地図画像用)
+   ```bash
+   gcloud services enable static-maps-backend.googleapis.com
+   gcloud alpha services api-keys create \
+     --display-name="Static Maps API Key" \
+     --api-target=service=static-maps-backend.googleapis.com
+   ```
+   - API キーを `.env.local` の `GOOGLE_STATIC_MAPS_KEY` に設定
 
 ### 1. Clone & 環境変数設定
 
@@ -160,6 +174,8 @@ AWS_REGION=us-east-1
 # Agent
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 CALENDAR_AGENT_ENDPOINT=http://localhost:8081
+MAPS_API_BASE_URL=https://myplace-blush.vercel.app
+GOOGLE_STATIC_MAPS_KEY=your-google-static-maps-api-key
 LOG_LEVEL=INFO
 
 # ローカル開発用 AgentCore エンドポイント
@@ -351,6 +367,7 @@ npm run deploy
 | `LIFF_ID` | LIFF アプリ ID (LINE Developer Console から取得) |
 | `DYNAMODB_TOKEN_TABLE` | OAuth トークンテーブル名 (default: `GoogleOAuthTokens`) |
 | `USER_STATE_TABLE` | ユーザーセッション状態テーブル名 (default: `UserSessionState`) |
+| `GOOGLE_STATIC_MAPS_KEY` | Google Static Maps API キー (場所カルーセルの地図画像用) |
 | `LOG_LEVEL` | ログレベル (default: `INFO`) |
 
 #### Lambda (OAuthCallbackFunction)
@@ -369,4 +386,5 @@ npm run deploy
 |------|------|
 | `BEDROCK_MODEL_ID` | Bedrock モデル ID (default: Claude Sonnet 4.5) |
 | `CALENDAR_AGENT_ENDPOINT` | Calendar Agent エンドポイント (default: `http://localhost:8081`) |
+| `MAPS_API_BASE_URL` | Maps API ベース URL (default: `https://myplace-blush.vercel.app`) |
 | `LOG_LEVEL` | ログレベル (default: `INFO`) |

@@ -477,3 +477,121 @@ calendar_agent を呼ぶべきケース:
 ```
 
 **教訓**: LLM は「判断してください」と言うと自分で回答しがち。「必ず」「質問や確認も不要」と強制する方がルーティング精度が上がる。
+
+---
+
+## 15. Maps Flex Message カルーセル
+
+### アーキテクチャ
+
+```
+Router Agent の search_place / recommend_place
+  ↓ JSON レスポンス（_maps_agent_result でバイパス）
+Lambda convert_agent_response()
+  ↓ type: "place_search" / "place_recommend" を検出
+place_carousel.py で Flex Message カルーセル生成
+  ↓ 静的地図画像 + 場所情報カード
+LINE に送信
+```
+
+### ツール定義の配置場所
+
+**問題**: 当初 `agent/tools/google_maps.py` に分離して定義していたが、`_maps_agent_result` バイパス変数を `main.py` と共有する必要があった。
+
+**解決策**: `search_place` / `recommend_place` を `main.py` にインライン定義（`calendar_agent` と同じパターン）。
+ツールが少ないうちはファイル分離よりバイパス変数の共有のしやすさを優先する方がシンプル。
+
+### LINE Flex Message image URL のバリデーション
+
+**問題**: Google Static Maps API の URL に含まれる `|` (パイプ文字) が LINE のバリデーションに引っかかり、
+`invalid uri scheme` エラー (HTTP 400) で Flex Message の送信が失敗した。
+
+```
+エラーログ:
+HTTP response body: {"message":"A message (messages[1]) in the request body is invalid",
+"details":[{"message":"invalid uri scheme","property":"/contents/0/hero/url"}]}
+```
+
+**原因**: `markers=color:red|35.658,139.701` の `|` が RFC 準拠の URI として不正。
+
+**解決策**: `urllib.parse.quote()` でパイプをエンコード (`%7C`) する。
+
+```python
+from urllib.parse import quote
+markers = quote(f"color:red|{lat},{lon}")
+url = f"https://maps.googleapis.com/maps/api/staticmap?...&markers={markers}&key={api_key}"
+```
+
+**教訓**: 外部 API の URL をそのまま LINE Flex Message に埋め込む場合、特殊文字 (`|`, `#`, `{`, `}` 等) は必ず URL エンコードすること。
+
+### モジュールレベル変数 vs 関数内読み込み
+
+**問題**: `place_carousel.py` で API キーをモジュールレベルで読み込んでいたが、
+Lambda の `__main__` ブロックで `load_dotenv()` が実行される前にモジュールがインポートされるため、
+環境変数が空になっていた。
+
+```python
+# NG: インポート時に読み込まれるが、まだ .env.local が load されていない
+GOOGLE_STATIC_MAPS_KEY = os.environ.get("GOOGLE_STATIC_MAPS_KEY", "")
+```
+
+**解決策**: 環境変数は関数内で読む。
+
+```python
+# OK: 関数呼び出し時に読むので、load_dotenv() 後に確実に取得できる
+def _build_hero_image(lat, lon):
+    if not os.environ.get("GOOGLE_STATIC_MAPS_KEY", ""):
+        return None
+    ...
+```
+
+**教訓**: `__main__` で `load_dotenv()` するローカル開発パターンでは、
+他モジュールの環境変数読み込みはモジュールレベルではなく関数内で行うこと。
+Lambda 本番環境では環境変数が最初から設定されるため問題にならないが、ローカルではハマる。
+
+### Bedrock モデル ID のリージョン依存
+
+**問題**: `us.anthropic.claude-sonnet-4-5-20250929-v1:0` を `ap-northeast-1` リージョンで使おうとして `ValidationException: The provided model identifier is invalid` エラーが発生。
+
+**原因**: モデル ID のプレフィックスはリージョンに紐づく。`us.` は US リージョン専用。
+
+**解決策**: `aws bedrock list-inference-profiles` で利用可能なモデルを確認する。
+
+```bash
+aws bedrock list-inference-profiles --region ap-northeast-1 \
+  --query "inferenceProfileSummaries[?contains(inferenceProfileName, 'Sonnet')].{name:inferenceProfileName, id:inferenceProfileId}" \
+  --output table
+```
+
+| リージョン | プレフィックス | 例 |
+|-----------|-------------|---|
+| US | `us.` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| 東京 (JP) | `jp.` | `jp.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+| APAC 全体 | `apac.` | `apac.anthropic.claude-sonnet-4-20250514-v1:0` (Sonnet 4.5 は `apac.` なし) |
+| グローバル | `global.` | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` |
+
+**教訓**: リージョン変更時はモデル ID のプレフィックスも変更する。`global.` は全リージョンで使えるが、JP 固有のプレフィックスの方が低レイテンシになる場合がある。
+
+### GCP Static Maps API のセットアップ
+
+CLI で API 有効化とキー作成ができる。
+
+```bash
+# 1. プロジェクト設定
+gcloud config set project <project-id>
+
+# 2. Static Maps API を有効化
+gcloud services enable static-maps-backend.googleapis.com
+
+# 3. API キー作成 (Static Maps API のみに制限)
+gcloud alpha services api-keys create \
+  --display-name="Static Maps API Key" \
+  --api-target=service=static-maps-backend.googleapis.com
+```
+
+### JSON レスポンス契約 (Maps)
+
+| type | 用途 | 主要フィールド |
+|------|------|---------------|
+| `place_search` | 場所検索結果 | `places[]` (name, lat, lon, place_id) |
+| `place_recommend` | おすすめ場所 | `places[]` (name, description, latitude, longitude, rating, minPrice) |
