@@ -2,8 +2,8 @@
 
 LINE 上で動く AI チャットボット。
 AWS Bedrock AgentCore Runtime (Strands Agents + Claude) で AI エージェントをホストし、LINE Webhook は API Gateway + Lambda で受ける。
-Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に、場所検索は Maps ツールに委譲する。
-Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の閲覧・作成・更新・削除が可能。
+Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に、メール操作は Gmail Agent に、場所検索は Maps ツールに委譲する。
+Google 連携 (OAuth2 + LIFF) により、LINE 上からカレンダー・Gmail の操作が可能。
 場所検索・おすすめ場所は Flex Message カルーセル（静的地図画像付き）でリッチ表示。
 
 ---
@@ -16,13 +16,20 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 │ User │◀────│ POST /callback   │◀────│  Webhook Handler    │     │ (AgentCore Runtime)     │◀────│ (Foundation Model)│
 └──────┘     │ GET /oauth/callback│    │                     │     │                         │     └──────────────────┘
              └──────────────────┘     │                     │     │  ┌─ 一般質問: 自分で回答 │
-                                      │                     │     │  └─ カレンダー: @tool ──┐│
-                                      │                     │     └─────────────────────────┘│
-                                      │                     │                                │
-                                      │                     │     ┌─────────────────────────┐│    ┌──────────────────┐
-                                      │                     │     │ Calendar Agent          ◀┘────▶│ Google Calendar  │
-                                      │                     │     │ (AgentCore Runtime)     │     │ API              │
-                                      │                     │     └─────────────────────────┘     └──────────────────┘
+                                      │                     │     │  ├─ カレンダー: @tool ──┐│
+                                      │                     │     │  ├─ メール: @tool ────┐ ││
+                                      │                     │     │  ├─ 場所検索: @tool    │ ││
+                                      │                     │     │  └─ おすすめ: @tool    │ ││
+                                      │                     │     └─────────────────────────┘ ││
+                                      │                     │                                 ││
+                                      │                     │     ┌─────────────────────────┐ ││   ┌──────────────────┐
+                                      │                     │     │ Calendar Agent          ◀─┘│──▶│ Google Calendar  │
+                                      │                     │     │ (AgentCore Runtime)     │  │   │ API              │
+                                      │                     │     └─────────────────────────┘  │   └──────────────────┘
+                                      │                     │     ┌─────────────────────────┐  │   ┌──────────────────┐
+                                      │                     │     │ Gmail Agent             ◀──┘──▶│ Gmail API        │
+                                      │                     │     │ (AgentCore Runtime)     │      └──────────────────┘
+                                      │                     │     └─────────────────────────┘
                                       │                     │
                                       │  ┌─── DynamoDB ────┐│     ┌─────────────────────────┐
                                       │  │ GoogleOAuthTokens││     │ LIFF App                │
@@ -40,16 +47,22 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 5. Router Agent が LLM ベースで意図を判断
    - 一般質問・雑談 → 自分で直接回答
    - カレンダー操作 → `calendar_agent` @tool 経由で Calendar Agent に委譲
+   - メール操作 → `gmail_agent` @tool 経由で Gmail Agent に委譲
    - 場所検索 → `search_place` @tool 経由で Vercel Maps API に委譲
    - おすすめ場所 → `recommend_place` @tool 経由で Vercel Maps API に委譲
-6. Calendar Agent / Maps API が JSON レスポンスを返却
+   - 現在地依存 → `request_location` @tool で位置情報をリクエスト
+6. 各 Agent / Maps API が JSON レスポンスを返却
 7. Router Agent がツールの生 JSON をそのまま Lambda に返す (LLM の後処理をバイパス)
-8. Lambda が Agent レスポンスの type フィールドに応じて Flex Message を構築
+8. Lambda が `_sanitize_response` で JSON を抽出後、type フィールドに応じて Flex Message を構築
    - `calendar_events` → 予定一覧カルーセル
    - `date_selection` → 日付選択カルーセル (空き=緑 / 埋まり=グレー)
+   - `email_list` → メール一覧カルーセル (未読/既読インジケーター付き)
+   - `email_detail` → メール詳細 (要約・添付ファイル情報)
+   - `email_confirm_send` → メール送信確認画面
    - `place_search` → 場所カルーセル (静的地図画像 + 地図を開くボタン)
    - `place_recommend` → おすすめカルーセル (地図画像 + 説明 + 評価・価格)
-   - `event_created` / `event_deleted` → 確認メッセージ
+   - `location_request` → 位置情報リクエスト (QuickReply 付き)
+   - `event_created` / `event_deleted` / `email_sent` / `email_deleted` → 確認メッセージ
    - テキスト → そのまま返信
 9. Lambda が LINE Messaging API 経由でユーザーに応答を返信
    - 55 秒以内: Reply API
@@ -70,7 +83,7 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 2. ユーザーが LIFF リンクをタップ → LIFF App が開く
 3. LIFF が `liff.openWindow({ url: oauthUrl, external: true })` で外部ブラウザを起動
    - Google が WebView (disallowed_useragent) をブロックするため、外部ブラウザが必須
-4. ユーザーが Google アカウントで認証・同意
+4. ユーザーが Google アカウントで認証・同意 (Calendar + Gmail スコープ)
 5. Google が `GET /oauth/callback` にリダイレクト → OAuth Callback Lambda がトークンを DynamoDB に保存
 6. 以降のリクエストでは DynamoDB からトークンを取得 (自動リフレッシュ対応)
 
@@ -81,16 +94,24 @@ Google カレンダー連携 (OAuth2 + LIFF) により、LINE 上から予定の
 ```
 assistant_agent_line/
 ├── agent/                         # Strands Agent (AgentCore Container)
-│   ├── main.py                    # Router Agent エントリポイント (Agents as Tools + Maps tools)
+│   ├── main.py                    # Router Agent エントリポイント (Agents as Tools)
 │   ├── calendar_agent.py          # Calendar Agent (port 8081)
+│   ├── gmail_agent.py             # Gmail Agent (port 8082)
+│   ├── Dockerfile                 # Router Agent Docker
 │   ├── Dockerfile.calendar        # Calendar Agent Docker
+│   ├── Dockerfile.gmail           # Gmail Agent Docker
 │   ├── tools/
-│   │   └── google_calendar.py     # 7 Calendar tools (@tool)
+│   │   ├── google_calendar.py     # 7 Calendar tools (@tool)
+│   │   ├── google_gmail.py        # 7 Gmail tools (@tool)
+│   │   └── google_maps.py         # 3 Maps tools (@tool)
+│   ├── tests/
+│   │   ├── test_main.py           # Router Agent テスト
+│   │   └── test_gmail_tools.py    # Gmail ツールテスト
 │   └── requirements.txt           # strands-agents, bedrock-agentcore
 ├── lambda/                        # LINE Webhook Handler
 │   ├── index.py                   # Lambda ハンドラ (Postback, Router Agent 呼び出し)
 │   ├── google_auth.py             # OAuth2 トークン管理 (DynamoDB CRUD)
-│   ├── google_calendar_api.py     # Calendar API ラッパー
+│   ├── google_calendar_api.py     # Calendar API ラッパー (Postback 用)
 │   ├── oauth_callback.py          # OAuth2 コールバックハンドラ
 │   ├── flex_messages/             # Flex Message ビルダー
 │   │   ├── oauth_link.py          # OAuth 連携リンクカード
@@ -98,10 +119,14 @@ assistant_agent_line/
 │   │   ├── place_carousel.py      # 場所カルーセル (静的地図画像付き)
 │   │   ├── date_picker.py         # 日付選択 (緑=空き, グレー=埋まり)
 │   │   ├── time_picker.py         # 時間帯選択
-│   │   └── event_confirm.py       # 作成/削除 確認画面
+│   │   ├── event_confirm.py       # 作成/削除 確認画面
+│   │   ├── email_carousel.py      # メール一覧カルーセル
+│   │   ├── email_detail.py        # メール詳細表示
+│   │   └── email_confirm.py       # メール送信確認画面
 │   ├── tests/
 │   │   ├── test_index.py          # Lambda ハンドラテスト
-│   │   ├── test_flex_messages.py  # Flex Message テスト
+│   │   ├── test_flex_messages.py  # Calendar/Maps Flex テスト
+│   │   ├── test_email_flex.py     # Gmail Flex テスト
 │   │   └── test_google_auth.py    # OAuth テスト
 │   └── requirements.txt           # line-bot-sdk, boto3, fastapi, uvicorn
 ├── infra/                         # AWS CDK (TypeScript)
@@ -109,11 +134,7 @@ assistant_agent_line/
 │   └── lib/line-agent-stack.ts    # スタック定義
 ├── docs/
 │   ├── todo/TODO.md               # タスク管理
-│   ├── knowledge/
-│   │   ├── RULES.md               # 開発ルール
-│   │   └── project.md             # 開発ナレッジ
-│   └── plan/2026/                 # 開発計画
-│       └── 02_08_Googleカレンダーエージェント作成.md
+│   └── knowledge/                 # 開発ナレッジ
 ├── conftest.py                    # テスト用モジュール登録
 ├── requirements-dev.txt           # テスト依存 (pytest, moto)
 ├── pyproject.toml                 # pytest 設定
@@ -135,9 +156,9 @@ assistant_agent_line/
 | Docker | latest | Lambda Layer ビルド / AgentCore ローカル |
 | ngrok | latest | ローカル開発時の LINE Webhook トンネル |
 
-### GCP セットアップ (Google カレンダー連携 + Static Maps)
+### GCP セットアップ (Google カレンダー・Gmail 連携 + Static Maps)
 
-1. **Google Cloud プロジェクト作成** & Calendar API を有効化
+1. **Google Cloud プロジェクト作成** & Calendar API / Gmail API を有効化
 2. **OAuth2 クライアント作成** (認証情報 → OAuth 2.0 クライアント ID → ウェブアプリケーション)
    - 承認済みリダイレクト URI: `https://<ngrok-or-api-gateway>/oauth/callback`
 3. **LIFF アプリ作成** (LINE Developer Console → LIFF タブ)
@@ -174,6 +195,7 @@ AWS_REGION=us-east-1
 # Agent
 BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 CALENDAR_AGENT_ENDPOINT=http://localhost:8081
+GMAIL_AGENT_ENDPOINT=http://localhost:8082
 MAPS_API_BASE_URL=https://myplace-blush.vercel.app
 GOOGLE_STATIC_MAPS_KEY=your-google-static-maps-api-key
 LOG_LEVEL=INFO
@@ -218,36 +240,37 @@ cd ..
 
 ## Local Development
 
-4 つのターミナルを使用する。
+5 つのターミナルを使用する。
 
-### Terminal 1: Router Agent 起動
-
-```bash
-source .venv/bin/activate
-cd agent
-python main.py
-# → http://localhost:8080 で起動
-```
-
-### Terminal 2: Calendar Agent 起動
+### Terminal 1: Calendar Agent 起動
 
 ```bash
-source .venv/bin/activate
-cd agent
-python calendar_agent.py --port 8081
+.venv/bin/python agent/calendar_agent.py --port 8081
 # → http://localhost:8081 で起動
 ```
 
-### Terminal 3: Lambda (FastAPI) 起動
+### Terminal 2: Gmail Agent 起動
 
 ```bash
-source .venv/bin/activate
-cd lambda
-python index.py
+.venv/bin/python agent/gmail_agent.py --port 8082
+# → http://localhost:8082 で起動
+```
+
+### Terminal 3: Router Agent 起動
+
+```bash
+.venv/bin/python agent/main.py
+# → http://localhost:8080 で起動
+```
+
+### Terminal 4: Lambda (FastAPI) 起動
+
+```bash
+.venv/bin/python lambda/index.py
 # → http://localhost:8000 で起動 (FastAPI + uvicorn)
 ```
 
-### Terminal 4: ngrok トンネル
+### Terminal 5: ngrok トンネル
 
 ```bash
 ngrok http 8000
@@ -273,18 +296,19 @@ ngrok http 8000
 
 | コマンド | 説明 |
 |---------|------|
-| `python agent/main.py` | Router Agent をローカル起動 (port 8080) |
-| `python agent/calendar_agent.py --port 8081` | Calendar Agent をローカル起動 (port 8081) |
-| `python lambda/index.py` | Lambda を FastAPI でローカル起動 (port 8000) |
+| `.venv/bin/python agent/main.py` | Router Agent をローカル起動 (port 8080) |
+| `.venv/bin/python agent/calendar_agent.py --port 8081` | Calendar Agent をローカル起動 (port 8081) |
+| `.venv/bin/python agent/gmail_agent.py --port 8082` | Gmail Agent をローカル起動 (port 8082) |
+| `.venv/bin/python lambda/index.py` | Lambda を FastAPI でローカル起動 (port 8000) |
 | `ngrok http 8000` | ngrok トンネル作成 |
 
 ### テストコマンド
 
 | コマンド | 説明 |
 |---------|------|
-| `pytest agent/tests/ lambda/tests/ -v` | 全テスト実行 |
-| `pytest agent/tests/ -v` | Agent テストのみ |
-| `pytest lambda/tests/ -v` | Lambda テストのみ |
+| `.venv/bin/pytest agent/tests/ lambda/tests/ -v` | 全テスト実行 (76テスト) |
+| `.venv/bin/pytest agent/tests/ -v` | Agent テストのみ |
+| `.venv/bin/pytest lambda/tests/ -v` | Lambda テストのみ |
 
 ### CDK コマンド
 
@@ -314,6 +338,7 @@ cd infra
 | `LambdaDepsLayer` | Lambda Layer | line-bot-sdk, boto3 等の依存パッケージ |
 | `lineAssistantAgent` | Bedrock AgentCore Runtime | Router Agent (Strands Agent + Claude, Agents as Tools) |
 | `CalendarAgentRuntime` | Bedrock AgentCore Runtime | Calendar Agent (Strands Agent + Calendar tools) |
+| `GmailAgentRuntime` | Bedrock AgentCore Runtime | Gmail Agent (Strands Agent + Gmail tools) |
 | `GoogleOAuthTokens` | DynamoDB | OAuth2 トークン保存 (RemovalPolicy: RETAIN) |
 | `UserSessionState` | DynamoDB | ユーザーセッション状態 (RemovalPolicy: DESTROY, TTL 有効) |
 | CloudWatch Logs | CloudWatch | Lambda ログ (保持期間: 1 週間) |
@@ -386,5 +411,6 @@ npm run deploy
 |------|------|
 | `BEDROCK_MODEL_ID` | Bedrock モデル ID (default: Claude Sonnet 4.5) |
 | `CALENDAR_AGENT_ENDPOINT` | Calendar Agent エンドポイント (default: `http://localhost:8081`) |
+| `GMAIL_AGENT_ENDPOINT` | Gmail Agent エンドポイント (default: `http://localhost:8082`) |
 | `MAPS_API_BASE_URL` | Maps API ベース URL (default: `https://myplace-blush.vercel.app`) |
 | `LOG_LEVEL` | ログレベル (default: `INFO`) |
