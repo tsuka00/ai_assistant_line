@@ -39,6 +39,9 @@ from flex_messages.event_confirm import (
     build_delete_confirmation,
     build_event_confirmation,
 )
+from flex_messages.email_carousel import build_email_carousel
+from flex_messages.email_confirm import build_email_send_confirm
+from flex_messages.email_detail import build_email_detail
 from flex_messages.place_carousel import build_place_carousel
 from flex_messages.time_picker import build_time_picker
 
@@ -185,7 +188,7 @@ def _build_oauth_messages(user_id: str) -> list:
     """OAuth 連携用メッセージを生成 (LIFF 経由で外部ブラウザを開く)."""
     liff_url = f"https://liff.line.me/{LIFF_ID}"
     flex_dict = {
-        "altText": "Google Calendar 連携",
+        "altText": "Google 連携",
         "contents": {
             "type": "bubble",
             "size": "kilo",
@@ -195,7 +198,7 @@ def _build_oauth_messages(user_id: str) -> list:
                 "contents": [
                     {
                         "type": "text",
-                        "text": "Google Calendar 連携",
+                        "text": "Google 連携",
                         "weight": "bold",
                         "size": "lg",
                         "color": "#1a73e8",
@@ -208,7 +211,7 @@ def _build_oauth_messages(user_id: str) -> list:
                 "contents": [
                     {
                         "type": "text",
-                        "text": "カレンダー機能を使うには\nGoogleアカウントの連携が\n必要です。",
+                        "text": "カレンダー・メール機能を\n使うにはGoogleアカウントの\n連携が必要です。",
                         "wrap": True,
                         "size": "sm",
                         "color": "#666666",
@@ -237,12 +240,57 @@ def _build_oauth_messages(user_id: str) -> list:
     return [_build_flex_message(flex_dict)]
 
 
+def _sanitize_response(text: str) -> str:
+    """LLM レスポンスから JSON 部分を抽出.
+
+    Agent のレスポンスにマークダウンコードブロックや余分なテキストが
+    含まれることがある。複数の手法で JSON を抽出する。
+    """
+    stripped = text.strip()
+
+    # 1. そのまま JSON として解析できるならそのまま返す
+    try:
+        json.loads(stripped)
+        return stripped
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # 2. Markdown コードブロック除去
+    if stripped.startswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            candidate = stripped[first_newline + 1:]
+        else:
+            candidate = stripped[3:]
+        if candidate.endswith("```"):
+            candidate = candidate[:-3].strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 3. テキスト中の最外 JSON オブジェクトを抽出 ({ ... })
+    first_brace = stripped.find("{")
+    last_brace = stripped.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = stripped[first_brace:last_brace + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return stripped
+
+
 def convert_agent_response(response_text: str, user_id: str) -> list:
     """Agent レスポンスを LINE メッセージに変換."""
+    cleaned = _sanitize_response(response_text)
     try:
-        data = json.loads(response_text)
+        data = json.loads(cleaned)
     except (json.JSONDecodeError, TypeError):
-        return [TextMessage(text=response_text)]
+        return [TextMessage(text=cleaned)]
 
     resp_type = data.get("type", "text")
     message_text = data.get("message", "")
@@ -316,6 +364,48 @@ def convert_agent_response(response_text: str, user_id: str) -> list:
 
     if resp_type == "event_deleted":
         return [TextMessage(text=message_text or "予定を削除しました。")]
+
+    # --- Gmail レスポンス ---
+
+    if resp_type == "email_list":
+        emails = data.get("emails", [])
+        flex = build_email_carousel(emails, message_text)
+        if flex.get("type") == "text":
+            return [TextMessage(text=flex["text"])]
+        messages = []
+        if message_text:
+            messages.append(TextMessage(text=message_text))
+        messages.append(_build_flex_message(flex))
+        return messages
+
+    if resp_type == "email_detail":
+        email = data.get("email", {})
+        flex = build_email_detail(email)
+        messages = []
+        if message_text:
+            messages.append(TextMessage(text=message_text))
+        messages.append(_build_flex_message(flex))
+        return messages
+
+    if resp_type == "email_confirm_send":
+        flex = build_email_send_confirm(data)
+        messages = []
+        if message_text:
+            messages.append(TextMessage(text=message_text))
+        messages.append(_build_flex_message(flex))
+        return messages
+
+    if resp_type == "email_sent":
+        return [TextMessage(text=message_text or "メールを送信しました。")]
+
+    if resp_type == "email_deleted":
+        return [TextMessage(text=message_text or "メールを削除しました。")]
+
+    if resp_type == "email_labels_updated":
+        return [TextMessage(text=message_text or "ラベルを更新しました。")]
+
+    if resp_type == "draft_saved":
+        return [TextMessage(text=message_text or "下書きを保存しました。")]
 
     # デフォルト: テキスト
     return [TextMessage(text=message_text or response_text)]
@@ -494,6 +584,12 @@ def handle_postback(event: PostbackEvent) -> None:
             _handle_event_delete(reply_token, user_id, params)
         elif action == "confirm_delete":
             _handle_confirm_delete(reply_token, user_id, params)
+        elif action == "email_detail":
+            _handle_email_detail(reply_token, user_id, params)
+        elif action == "email_delete":
+            _handle_email_delete(reply_token, user_id, params)
+        elif action == "email_send":
+            _handle_email_send(reply_token, user_id, params)
         elif action == "cancel":
             clear_user_state(user_id)
         else:
@@ -660,6 +756,59 @@ def _handle_confirm_delete(reply_token: str, user_id: str, params: dict) -> None
     )
 
 
+def _handle_email_detail(reply_token: str, user_id: str, params: dict) -> None:
+    """メール詳細表示 → Agent に委譲."""
+    email_id = params.get("email_id", [""])[0]
+
+    start_time = time.time()
+    try:
+        prompt = f"メール ID {email_id} の詳細を表示してください。"
+        ai_response = invoke_router_agent(prompt, user_id)
+    except Exception:
+        logger.error("Email detail agent call failed", exc_info=True)
+        ai_response = json.dumps({"type": "text", "message": "メール詳細の取得に失敗しました。"})
+
+    elapsed = time.time() - start_time
+    messages = convert_agent_response(ai_response, user_id)
+    send_response(reply_token, user_id, messages, elapsed)
+
+
+def _handle_email_delete(reply_token: str, user_id: str, params: dict) -> None:
+    """メール削除 → Agent に委譲."""
+    email_id = params.get("email_id", [""])[0]
+
+    start_time = time.time()
+    try:
+        prompt = f"メール ID {email_id} を削除してください。"
+        ai_response = invoke_router_agent(prompt, user_id)
+    except Exception:
+        logger.error("Email delete agent call failed", exc_info=True)
+        ai_response = json.dumps({"type": "text", "message": "メール削除に失敗しました。"})
+
+    elapsed = time.time() - start_time
+    messages = convert_agent_response(ai_response, user_id)
+    send_response(reply_token, user_id, messages, elapsed)
+
+
+def _handle_email_send(reply_token: str, user_id: str, params: dict) -> None:
+    """メール送信確認後の実際の送信 → Agent に委譲."""
+    to = unquote(params.get("to", [""])[0])
+    subject = unquote(params.get("subject", [""])[0])
+    body = unquote(params.get("body", [""])[0])
+
+    start_time = time.time()
+    try:
+        prompt = f"以下の内容でメールを送信してください。送信確認は不要です。\n宛先: {to}\n件名: {subject}\n本文: {body}"
+        ai_response = invoke_router_agent(prompt, user_id)
+    except Exception:
+        logger.error("Email send agent call failed", exc_info=True)
+        ai_response = json.dumps({"type": "text", "message": "メール送信に失敗しました。"})
+
+    elapsed = time.time() - start_time
+    messages = convert_agent_response(ai_response, user_id)
+    send_response(reply_token, user_id, messages, elapsed)
+
+
 # ---------- Lambda Handler ----------
 
 
@@ -699,6 +848,10 @@ if __name__ == "__main__":
 
     env_path = os.path.join(os.path.dirname(__file__), "..", ".env.local")
     load_dotenv(dotenv_path=env_path, override=True)
+
+    # ロガーレベルを .env.local の値で再設定
+    logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+    logging.getLogger().setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
     # .env.local の値でグローバル変数を再設定
     CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
