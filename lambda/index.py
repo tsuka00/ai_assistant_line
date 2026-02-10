@@ -133,7 +133,10 @@ def _build_google_credentials(line_user_id: str) -> dict | None:
 
 def invoke_router_agent(prompt: str, line_user_id: str) -> str:
     """Router Agent を呼び出し (Google 認証情報付き)."""
-    payload = {"prompt": prompt}
+    payload = {
+        "prompt": prompt,
+        "line_user_id": line_user_id,
+    }
 
     # Google 認証情報があれば付与（Router → Calendar Agent に転送される）
     google_creds = _build_google_credentials(line_user_id)
