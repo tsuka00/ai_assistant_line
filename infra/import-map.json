@@ -1,0 +1,8 @@
+{
+  "GoogleOAuthTokensD18E1AC9": {
+    "TableName": "GoogleOAuthTokens"
+  },
+  "UserSessionState3B06873E": {
+    "TableName": "UserSessionState"
+  }
+}
