@@ -88,4 +88,9 @@
 | 74 | Maps ナレッジドキュメント作成 | ✅ 完了 | docs/knowledge/maps.md — API仕様・ツール設計・Pseudo-GPSフロー |
 | 85 | Markdown コードブロック除去 (sanitize_response) | ✅ 完了 | gmail_agent / calendar_agent / main.py |
 | 86 | OAuth トークン再認証 (gmail.modify スコープ) | ✅ 完了 | DynamoDB トークン削除済み → 次回操作時に再連携 |
+| 87 | Gmail Agent レスポンス変換問題の調査・修正 | ⏳ 未着手 | LINE→Lambda→Router→Gmail Agent の E2E フローでレスポンスが返らない / JSON が二重ラップされる問題。_sanitize_response 修正済みだが E2E 未検証 |
+| 88 | Tavily Web Research: tavily_search.py ツール実装 | ✅ 完了 | web_search + extract_content |
+| 89 | Tavily Web Research: Router Agent 統合 | ✅ 完了 | main.py — import、ツール登録、システムプロンプト |
+| 90 | Tavily Web Research: CDK 環境変数追加 | ✅ 完了 | TAVILY_API_KEY |
+| 91 | Tavily Web Research: ユニットテスト | ✅ 完了 | 全86テスト合格 (Tavily 10テスト追加) |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
