@@ -93,4 +93,12 @@
 | 89 | Tavily Web Research: Router Agent 統合 | ✅ 完了 | main.py — import、ツール登録、システムプロンプト |
 | 90 | Tavily Web Research: CDK 環境変数追加 | ✅ 完了 | TAVILY_API_KEY |
 | 91 | Tavily Web Research: ユニットテスト | ✅ 完了 | 全86テスト合格 (Tavily 10テスト追加) |
+| 92 | Bedrock AgentCore Memory: conftest.py モック追加 | ✅ 完了 | bedrock_agentcore.memory.* サブモジュールのモック登録 |
+| 93 | Bedrock AgentCore Memory: agent/main.py 統合 | ✅ 完了 | import, _build_session_manager, create_agent, invoke 修正, システムプロンプト |
+| 94 | Bedrock AgentCore Memory: agent/tests/test_main.py テスト追加 | ✅ 完了 | 7テスト追加 |
+| 95 | Bedrock AgentCore Memory: lambda/index.py payload 修正 | ✅ 完了 | line_user_id を payload に追加 |
+| 96 | Bedrock AgentCore Memory: lambda/tests/test_index.py テスト追加 | ✅ 完了 | line_user_id テスト |
+| 97 | Bedrock AgentCore Memory: requirements.txt 更新 | ✅ 完了 | bedrock-agentcore>=1.2.1 |
+| 98 | Bedrock AgentCore Memory: .env / CDK 更新 | ✅ 完了 | BEDROCK_MEMORY_ID 追加, IAM ポリシー |
+| 99 | Bedrock AgentCore Memory: テスト実行・修正 | ✅ 完了 | 全94テスト合格 |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
