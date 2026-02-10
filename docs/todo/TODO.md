@@ -101,4 +101,5 @@
 | 97 | Bedrock AgentCore Memory: requirements.txt 更新 | ✅ 完了 | bedrock-agentcore>=1.2.1 |
 | 98 | Bedrock AgentCore Memory: .env / CDK 更新 | ✅ 完了 | BEDROCK_MEMORY_ID 追加, IAM ポリシー |
 | 99 | Bedrock AgentCore Memory: テスト実行・修正 | ✅ 完了 | 全94テスト合格 |
+| 100 | Bedrock AgentCore Memory: AWS リソース作成 & デプロイ | ✅ 完了 | LineAssistantMemory-8u4fziHv4d (us-east-1), 3ストラテジー, デプロイ済み |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
