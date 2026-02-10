@@ -176,22 +176,106 @@ with patch.object(idx, "parser") as mock_parser:
 
 ## 8. デプロイ関連
 
+### 環境変数の渡し方
+
+CDK スタック (`line-agent-stack.ts`) は `process.env.*` でシェル環境変数を直接参照する。
+dotenv は使っていないので、`.env.local` から読み込む場合は `set -a && source .env.local && set +a` が必要。
+
+### デプロイ手順
+
+```bash
+cd infra
+
+# 1. .env.local の環境変数をシェルに読み込み
+set -a && source ../.env.local && set +a
+
+# 2. Bootstrap (初回のみ)
+npx cdk bootstrap
+
+# 3. 差分確認 (推奨)
+npx cdk diff
+
+# 4. デプロイ
+npx cdk deploy --require-approval never
+```
+
+AWS CLI プロファイルを使う場合:
+```bash
+export AWS_PROFILE=line-agent
+```
+
+### コマンド一覧
+
 | 項目 | コマンド |
 |------|---------|
-| Bootstrap (初回のみ) | `AWS_PROFILE=line-agent npx cdk bootstrap` |
-| デプロイ | `AWS_PROFILE=line-agent LINE_CHANNEL_SECRET=xxx LINE_CHANNEL_ACCESS_TOKEN=xxx npx cdk deploy` |
-| 差分確認 | `AWS_PROFILE=line-agent npx cdk diff` |
-| スタック削除 | `AWS_PROFILE=line-agent npx cdk destroy` |
-| リージョン指定 | `CDK_DEFAULT_REGION=ap-northeast-1` |
+| 環境変数読み込み | `set -a && source ../.env.local && set +a` |
+| Bootstrap (初回のみ) | `npx cdk bootstrap` |
+| デプロイ | `npx cdk deploy --require-approval never` |
+| 差分確認 | `npx cdk diff` |
+| スタック削除 | `npx cdk destroy` |
 
 ### デプロイ時の注意
 
 | 注意点 | 詳細 |
 |--------|------|
-| LINE 環境変数 | デプロイ時に `LINE_CHANNEL_SECRET` と `LINE_CHANNEL_ACCESS_TOKEN` が必要。空だと Lambda が動かない |
+| 環境変数必須 | `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_STATE_SECRET`, `TAVILY_API_KEY` が必要 |
 | Docker 必須 | AgentCore Runtime のコンテナビルドと Lambda Layer のビルドに Docker が必要 |
 | ARM64 | Lambda と Layer は ARM64。ローカルの Docker が ARM エミュレーションに対応している必要あり (Apple Silicon は OK) |
 | logRetention 非推奨 | CDK の `logRetention` は deprecated。`logGroup` に移行推奨 (動作には影響なし) |
+
+### デプロイ後の設定
+
+| 項目 | 設定場所 | 値 |
+|------|---------|---|
+| Webhook URL | LINE Developer Console | `https://<api-gw>.execute-api.<region>.amazonaws.com/prod/callback` |
+| OAuth Redirect URI | GCP Console + `.env.local` | `https://<api-gw>.execute-api.<region>.amazonaws.com/prod/oauth/callback` |
+| LIFF Endpoint URL | LINE Developer Console | LIFF 用ページの URL (本番 or ngrok) |
+
+### DynamoDB テーブルの CDK インポート
+
+**問題**: DynamoDB テーブルを CDK の外で先に作成した場合、`cdk deploy` で
+`Resource of type 'AWS::DynamoDB::Table' with identifier 'xxx' already exists` エラーになる。
+
+CDK は自分が管理していないリソースを新規作成しようとして、同名テーブルが既にあるため失敗する。
+
+**解決策**: `cdk import` で既存リソースを CDK 管理下に取り込む。
+
+```bash
+# 1. マッピングファイルを作成
+cat > import-map.json << 'EOF'
+{
+  "GoogleOAuthTokensD18E1AC9": {
+    "TableName": "GoogleOAuthTokens"
+  },
+  "UserSessionState3B06873E": {
+    "TableName": "UserSessionState"
+  }
+}
+EOF
+
+# 2. インポート実行
+npx cdk import --resource-mapping import-map.json --force
+
+# 3. その後 cdk deploy で残りの変更を適用
+npx cdk deploy --require-approval never
+```
+
+**注意点**:
+- マッピングファイルのキー (`GoogleOAuthTokensD18E1AC9` 等) は CDK が生成する論理 ID。`cdk synth` の出力や `cdk diff` のエラーメッセージから確認できる
+- `--force` は import 時に他の変更差分を無視するオプション。import 後に `cdk deploy` で残りを適用する
+- データは消えない。CDK の管理下に入るだけ
+
+### 本番環境情報 (2026-02-11 時点)
+
+| リソース | 値 |
+|---|---|
+| API Gateway | `https://2uco1x3zrk.execute-api.ap-northeast-1.amazonaws.com/prod/` |
+| Webhook URL | `.../prod/callback` |
+| OAuth Callback | `.../prod/oauth/callback` |
+| Router Agent | `lineAssistantAgent-RyWqz746z6` |
+| Calendar Agent | `calendarAgent-q4mELzB9a6` |
+| Gmail Agent | `gmailAgent-Owua548TiA` |
+| リージョン | `ap-northeast-1` |
 
 ---
 
