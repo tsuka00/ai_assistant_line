@@ -69,7 +69,16 @@
 | 65 | Google Maps @tool のユニットテスト作成 | ⏳ 未着手 | HTTP モック + レスポンス検証 |
 | 66 | ローカル E2E テスト (Maps @tool 経由) | ✅ 完了 | LINE → Router → search_place / recommend_place → Flex カルーセル表示確認済み |
 | 67 | LINE 内の Maps 表示 UI/UX 検討・実装 | ✅ 完了 | Flex Message カルーセル（静的地図画像付き）、全41テスト合格 |
-| - | Gmail エージェント作成 | ⏳ 未着手 | メール送信・検索・閲覧 |
+| 75 | Gmail Agent: OAuth スコープに gmail.modify 追加 | ✅ 完了 | lambda/google_auth.py |
+| 76 | Gmail Agent: Gmail ツールモジュール作成 | ✅ 完了 | agent/tools/google_gmail.py — 7ツール |
+| 77 | Gmail Agent: Gmail Agent 本体実装 | ✅ 完了 | agent/gmail_agent.py — ポート8082 |
+| 78 | Gmail Agent: Dockerfile 作成 | ✅ 完了 | agent/Dockerfile.gmail |
+| 79 | Gmail Agent: Router Agent 統合 | ✅ 完了 | agent/main.py — gmail_agent ツール追加 |
+| 80 | Gmail Agent: Flex Message ビルダー | ✅ 完了 | email_carousel / email_detail / email_confirm |
+| 81 | Gmail Agent: Lambda レスポンス変換 | ✅ 完了 | lambda/index.py — Gmail レスポンス型ハンドリング |
+| 82 | Gmail Agent: CDK スタック更新 | ✅ 完了 | infra/lib/line-agent-stack.ts |
+| 83 | Gmail Agent: 環境変数・OAuth メッセージ更新 | ✅ 完了 | .env.example, oauth_callback.py |
+| 84 | Gmail Agent: ユニットテスト | ✅ 完了 | 全76テスト合格 (Gmail 22テスト追加) |
 | 68 | request_location ツール実装 | ✅ 完了 | agent/tools/google_maps.py に切り出し + システムプロンプト更新 |
 | 69 | LocationMessage ハンドラ実装 | ✅ 完了 | QuickReply 生成 + DynamoDB ステート管理 + 再呼び出し |
 | 70 | conftest.py / テスト追加 | ✅ 完了 | LocationMessageContent スタブ + QuickReply スタブ + 全47テスト合格 |
@@ -77,4 +86,6 @@
 | 72 | Maps ツールを agent/tools/google_maps.py に分離 | ✅ 完了 | search_place / recommend_place / request_location を main.py から切り出し |
 | 73 | 位置情報リクエストのメッセージトーン改善 | ✅ 完了 | 固定テンプレート廃止、LLM が自然な依頼文を生成する方式に変更 |
 | 74 | Maps ナレッジドキュメント作成 | ✅ 完了 | docs/knowledge/maps.md — API仕様・ツール設計・Pseudo-GPSフロー |
+| 85 | Markdown コードブロック除去 (sanitize_response) | ✅ 完了 | gmail_agent / calendar_agent / main.py |
+| 86 | OAuth トークン再認証 (gmail.modify スコープ) | ✅ 完了 | DynamoDB トークン削除済み → 次回操作時に再連携 |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
