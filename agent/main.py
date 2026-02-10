@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 # ローカル開発時は .env.local を読み込む
 try:
@@ -37,6 +38,37 @@ from tools.tavily_search import extract_content, web_search
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
+
+jst = timezone(timedelta(hours=9))
+
+# --- Bedrock AgentCore Memory (条件付き) ---
+BEDROCK_MEMORY_ID = os.environ.get("BEDROCK_MEMORY_ID", "")
+_memory_available = False
+try:
+    from bedrock_agentcore.memory.integrations.strands import AgentCoreMemorySessionManager
+    from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
+    _memory_available = bool(BEDROCK_MEMORY_ID)
+except ImportError:
+    AgentCoreMemorySessionManager = None  # type: ignore[assignment,misc]
+    AgentCoreMemoryConfig = None  # type: ignore[assignment,misc]
+    if BEDROCK_MEMORY_ID:
+        logger.warning("bedrock_agentcore.memory not available, running without memory")
+
+
+def _build_session_manager(line_user_id: str):
+    """Memory が利用可能なら AgentCoreMemorySessionManager を構築."""
+    if not _memory_available or not BEDROCK_MEMORY_ID:
+        return None
+    today = datetime.now(jst).strftime("%Y-%m-%d")
+    config = AgentCoreMemoryConfig(
+        memory_id=BEDROCK_MEMORY_ID,
+        session_id=f"{line_user_id}-{today}",
+        actor_id=line_user_id,
+    )
+    return AgentCoreMemorySessionManager(
+        agentcore_memory_config=config,
+        region_name=os.environ.get("AWS_REGION", "us-east-1"),
+    )
 
 SYSTEM_PROMPT = """\
 あなたは LINE で動く日本語AIアシスタントです。
@@ -102,6 +134,12 @@ extract_content を呼ぶべきケース:
 
 自分で直接回答するケース:
 ・一般的な質問・雑談・知識系の質問（予定・場所検索・Web検索に全く関係ないもの）
+
+【記憶機能について】
+あなたはユーザーとの過去の会話を記憶しています。
+・ユーザーの名前、好み、習慣などを覚えている場合は自然に活用してください
+・「前に話した○○」のような参照があれば記憶から思い出してください
+・ただし記憶を無理に言及する必要はありません。自然な会話を優先してください
 
 calendar_agent ツールを呼んだ場合は、その戻り値をそのまま返してください。加工しないでください。
 gmail_agent ツールを呼んだ場合は、その戻り値をそのまま返してください。加工しないでください。
@@ -236,26 +274,26 @@ def gmail_agent(query: str) -> str:
 
 def _build_system_prompt() -> str:
     """現在日時を埋め込んだシステムプロンプトを生成."""
-    from datetime import datetime, timedelta, timezone
-
-    jst = timezone(timedelta(hours=9))
     now = datetime.now(jst)
     weekday = ["月", "火", "水", "木", "金", "土", "日"][now.weekday()]
     date_line = f"現在の日時: {now.strftime('%Y年%m月%d日')}({weekday}) {now.strftime('%H:%M')}"
     return f"{date_line}\n\n{SYSTEM_PROMPT}"
 
 
-def create_agent() -> Agent:
+def create_agent(session_manager=None) -> Agent:
     """Router Agent を作成."""
     model = BedrockModel(
         model_id=MODEL_ID,
         streaming=True,
     )
-    return Agent(
-        model=model,
-        system_prompt=_build_system_prompt(),
-        tools=[calendar_agent, gmail_agent, search_place, recommend_place, request_location, web_search, extract_content],
-    )
+    kwargs = {
+        "model": model,
+        "system_prompt": _build_system_prompt(),
+        "tools": [calendar_agent, gmail_agent, search_place, recommend_place, request_location, web_search, extract_content],
+    }
+    if session_manager is not None:
+        kwargs["session_manager"] = session_manager
+    return Agent(**kwargs)
 
 
 @app.entrypoint
@@ -275,7 +313,16 @@ def invoke(payload: dict) -> dict:
 
     logger.info("Invoking router agent with prompt length: %d", len(prompt))
 
-    agent = create_agent()
+    # Memory session manager の構築
+    session_manager = None
+    line_user_id = payload.get("line_user_id")
+    if line_user_id:
+        try:
+            session_manager = _build_session_manager(line_user_id)
+        except Exception:
+            logger.warning("Failed to build session manager, continuing without memory", exc_info=True)
+
+    agent = create_agent(session_manager=session_manager)
     result = agent(prompt)
 
     # ツールが呼ばれた場合、LLM の加工を無視して生の JSON を返す
