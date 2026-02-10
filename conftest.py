@@ -60,6 +60,14 @@ if "tools.google_maps" not in sys.modules:
     sys.modules["tools.google_maps"] = mod
     spec.loader.exec_module(mod)
 
+if "tools.google_gmail" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "tools.google_gmail", str(ROOT / "agent" / "tools" / "google_gmail.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["tools.google_gmail"] = mod
+    spec.loader.exec_module(mod)
+
 if "agent.main" not in sys.modules:
     spec = importlib.util.spec_from_file_location(
         "agent.main", str(ROOT / "agent" / "main.py")
@@ -181,6 +189,9 @@ _lambda_modules = {
     "flex_messages.event_confirm": ROOT / "lambda" / "flex_messages" / "event_confirm.py",
     "flex_messages.place_carousel": ROOT / "lambda" / "flex_messages" / "place_carousel.py",
     "flex_messages.oauth_link": ROOT / "lambda" / "flex_messages" / "oauth_link.py",
+    "flex_messages.email_carousel": ROOT / "lambda" / "flex_messages" / "email_carousel.py",
+    "flex_messages.email_detail": ROOT / "lambda" / "flex_messages" / "email_detail.py",
+    "flex_messages.email_confirm": ROOT / "lambda" / "flex_messages" / "email_confirm.py",
 }
 
 for mod_name, file_path in _lambda_modules.items():

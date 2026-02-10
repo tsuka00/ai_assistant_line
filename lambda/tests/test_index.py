@@ -385,6 +385,105 @@ def test_handle_text_message_clears_waiting_location():
         mock_invoke.assert_called_once_with("渋谷のカフェ教えて", "U1234")
 
 
+# ---------------------------------------------------------------------------
+# Gmail convert_agent_response tests
+# ---------------------------------------------------------------------------
+
+
+def test_convert_agent_response_email_list():
+    """email_list タイプで Flex カルーセルが返ること."""
+    response = json.dumps({
+        "type": "email_list",
+        "message": "受信トレイの一覧です。",
+        "emails": [
+            {
+                "id": "msg1",
+                "subject": "テスト件名",
+                "from": "sender@example.com",
+                "date": "",
+                "snippet": "スニペット",
+                "label_ids": ["INBOX"],
+            },
+        ],
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 2  # TextMessage + FlexMessage
+
+
+def test_convert_agent_response_email_list_empty():
+    """email_list で空の場合テキストが返ること."""
+    response = json.dumps({
+        "type": "email_list",
+        "message": "",
+        "emails": [],
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 1
+
+
+def test_convert_agent_response_email_detail():
+    """email_detail タイプで Flex が返ること."""
+    response = json.dumps({
+        "type": "email_detail",
+        "message": "メールの内容です。",
+        "email": {
+            "id": "msg1",
+            "subject": "テスト件名",
+            "from": "sender@example.com",
+            "to": "recipient@example.com",
+            "date": "",
+            "summary": "要約テスト",
+            "has_attachments": False,
+            "attachment_count": 0,
+        },
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 2  # TextMessage + FlexMessage
+
+
+def test_convert_agent_response_email_confirm_send():
+    """email_confirm_send タイプで Flex が返ること."""
+    response = json.dumps({
+        "type": "email_confirm_send",
+        "message": "以下の内容でメールを送信しますか？",
+        "to": "test@example.com",
+        "subject": "テスト",
+        "body": "テスト本文",
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 2  # TextMessage + FlexMessage
+
+
+def test_convert_agent_response_email_sent():
+    """email_sent タイプでテキストが返ること."""
+    response = json.dumps({
+        "type": "email_sent",
+        "message": "メールを送信しました。",
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 1
+
+
+def test_convert_agent_response_email_deleted():
+    """email_deleted タイプでテキストが返ること."""
+    response = json.dumps({
+        "type": "email_deleted",
+        "message": "メールを削除しました。",
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 1
+
+
+def test_convert_agent_response_draft_saved():
+    """draft_saved タイプでテキストが返ること."""
+    response = json.dumps({
+        "type": "draft_saved",
+        "message": "下書きを保存しました。",
+    })
+    messages = idx.convert_agent_response(response, "U1234")
+    assert len(messages) == 1
+
+
 def test_lambda_handler_location_message():
     """LocationMessageContent のディスパッチが正しいこと."""
     from linebot.v3.webhooks import LocationMessageContent, MessageEvent
