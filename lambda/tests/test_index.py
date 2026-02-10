@@ -484,6 +484,35 @@ def test_convert_agent_response_draft_saved():
     assert len(messages) == 1
 
 
+def test_invoke_router_agent_passes_line_user_id():
+    """payload に line_user_id が含まれること."""
+    original = idx.AGENTCORE_RUNTIME_ENDPOINT
+    idx.AGENTCORE_RUNTIME_ENDPOINT = "http://localhost:8080"
+
+    try:
+        response_body = json.dumps({"result": "応答"}).encode("utf-8")
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = response_body
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("urllib.request.Request") as mock_request_cls,
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            patch.object(idx, "_build_google_credentials", return_value=None),
+        ):
+            result = idx.invoke_router_agent("テスト", "U5678")
+
+        call_args = mock_request_cls.call_args
+        sent_bytes = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("data")
+        sent_data = json.loads(sent_bytes.decode("utf-8"))
+        assert sent_data["prompt"] == "テスト"
+        assert sent_data["line_user_id"] == "U5678"
+        assert result == "応答"
+    finally:
+        idx.AGENTCORE_RUNTIME_ENDPOINT = original
+
+
 def test_lambda_handler_location_message():
     """LocationMessageContent のディスパッチが正しいこと."""
     from linebot.v3.webhooks import LocationMessageContent, MessageEvent
