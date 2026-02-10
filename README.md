@@ -2,9 +2,10 @@
 
 LINE 上で動く AI チャットボット。
 AWS Bedrock AgentCore Runtime (Strands Agents + Claude) で AI エージェントをホストし、LINE Webhook は API Gateway + Lambda で受ける。
-Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に、メール操作は Gmail Agent に、場所検索は Maps ツールに委譲する。
+Router Agent (Agents as Tools パターン) が LLM ベースで意図を判断し、一般質問には自分で回答、カレンダー操作は Calendar Agent に、メール操作は Gmail Agent に、場所検索は Maps ツールに、Web 検索は Tavily API に委譲する。
 Google 連携 (OAuth2 + LIFF) により、LINE 上からカレンダー・Gmail の操作が可能。
 場所検索・おすすめ場所は Flex Message カルーセル（静的地図画像付き）でリッチ表示。
+Bedrock AgentCore Memory によるユーザーごとの会話記憶（短期・長期）に対応。
 
 ---
 
@@ -17,25 +18,33 @@ Google 連携 (OAuth2 + LIFF) により、LINE 上からカレンダー・Gmail 
 └──────┘     │ GET /oauth/callback│    │                     │     │                         │     └──────────────────┘
              └──────────────────┘     │                     │     │  ┌─ 一般質問: 自分で回答 │
                                       │                     │     │  ├─ カレンダー: @tool ──┐│
-                                      │                     │     │  ├─ メール: @tool ────┐ ││
-                                      │                     │     │  ├─ 場所検索: @tool    │ ││
-                                      │                     │     │  └─ おすすめ: @tool    │ ││
-                                      │                     │     └─────────────────────────┘ ││
-                                      │                     │                                 ││
-                                      │                     │     ┌─────────────────────────┐ ││   ┌──────────────────┐
-                                      │                     │     │ Calendar Agent          ◀─┘│──▶│ Google Calendar  │
-                                      │                     │     │ (AgentCore Runtime)     │  │   │ API              │
-                                      │                     │     └─────────────────────────┘  │   └──────────────────┘
-                                      │                     │     ┌─────────────────────────┐  │   ┌──────────────────┐
-                                      │                     │     │ Gmail Agent             ◀──┘──▶│ Gmail API        │
-                                      │                     │     │ (AgentCore Runtime)     │      └──────────────────┘
-                                      │                     │     └─────────────────────────┘
+                                      │                     │     │  ├─ メール: @tool ────┐ ││     ┌──────────────────┐
+                                      │                     │     │  ├─ 場所検索: @tool   │ ││  ┌─▶│ Google Calendar  │
+                                      │                     │     │  ├─ おすすめ: @tool   │ ││  │  │ API              │
+                                      │                     │     │  ├─ 位置情報: @tool   │ ││  │  └──────────────────┘
+                                      │                     │     │  └─ Web検索: @tool    │ ││  │  ┌──────────────────┐
+                                      │                     │     └─────────────────────────┘ ││  ├─▶│ Gmail API        │
+                                      │                     │                                 ││  │  └──────────────────┘
+                                      │                     │     ┌─────────────────────────┐ ││  │  ┌──────────────────┐
+                                      │                     │     │ Calendar Agent          ◀─┘│──┤  │ Vercel Maps API  │
+                                      │                     │     │ (AgentCore Runtime)     │  │  ├─▶│ (search/recommend)│
+                                      │                     │     └─────────────────────────┘  │  │  └──────────────────┘
+                                      │                     │     ┌─────────────────────────┐  │  │  ┌──────────────────┐
+                                      │                     │     │ Gmail Agent             ◀──┘  └─▶│ Tavily API       │
+                                      │                     │     │ (AgentCore Runtime)     │        │ (Web検索/抽出)    │
+                                      │                     │     └─────────────────────────┘        └──────────────────┘
                                       │                     │
                                       │  ┌─── DynamoDB ────┐│     ┌─────────────────────────┐
-                                      │  │ GoogleOAuthTokens││     │ LIFF App                │
-                                      │  │ UserSessionState ││     │ → Google OAuth2          │
-                                      │  └─────────────────┘│     │ (外部ブラウザで認証)     │
-                                      └─────────────────────┘     └─────────────────────────┘
+                                      │  │ GoogleOAuthTokens││     │ AgentCore Memory        │
+                                      │  │ UserSessionState ││     │ (会話記憶: 短期+長期)    │
+                                      │  └─────────────────┘│     │ actor_id = LINE user_id  │
+                                      └─────────────────────┘     │ session_id = user-日付   │
+                                                                  └─────────────────────────┘
+                                      ┌─────────────────────┐
+                                      │ LIFF App            │
+                                      │ → Google OAuth2      │
+                                      │ (外部ブラウザで認証) │
+                                      └─────────────────────┘
 ```
 
 **リクエストフロー (テキストメッセージ):**
@@ -51,6 +60,8 @@ Google 連携 (OAuth2 + LIFF) により、LINE 上からカレンダー・Gmail 
    - 場所検索 → `search_place` @tool 経由で Vercel Maps API に委譲
    - おすすめ場所 → `recommend_place` @tool 経由で Vercel Maps API に委譲
    - 現在地依存 → `request_location` @tool で位置情報をリクエスト
+   - Web 検索 → `web_search` / `extract_content` @tool 経由で Tavily API に委譲
+   - 会話記憶: Bedrock AgentCore Memory で過去の会話・ユーザー情報を自動参照
 6. 各 Agent / Maps API が JSON レスポンスを返却
 7. Router Agent がツールの生 JSON をそのまま Lambda に返す (LLM の後処理をバイパス)
 8. Lambda が `_sanitize_response` で JSON を抽出後、type フィールドに応じて Flex Message を構築
@@ -103,10 +114,12 @@ assistant_agent_line/
 │   ├── tools/
 │   │   ├── google_calendar.py     # 7 Calendar tools (@tool)
 │   │   ├── google_gmail.py        # 7 Gmail tools (@tool)
-│   │   └── google_maps.py         # 3 Maps tools (@tool)
+│   │   ├── google_maps.py         # 3 Maps tools (@tool)
+│   │   └── tavily_search.py       # 2 Web search tools (@tool)
 │   ├── tests/
-│   │   ├── test_main.py           # Router Agent テスト
-│   │   └── test_gmail_tools.py    # Gmail ツールテスト
+│   │   ├── test_main.py           # Router Agent テスト (Memory 統合含む)
+│   │   ├── test_gmail_tools.py    # Gmail ツールテスト
+│   │   └── test_tavily_tools.py   # Tavily Web 検索テスト
 │   └── requirements.txt           # strands-agents, bedrock-agentcore
 ├── lambda/                        # LINE Webhook Handler
 │   ├── index.py                   # Lambda ハンドラ (Postback, Router Agent 呼び出し)
@@ -306,7 +319,7 @@ ngrok http 8000
 
 | コマンド | 説明 |
 |---------|------|
-| `.venv/bin/pytest agent/tests/ lambda/tests/ -v` | 全テスト実行 (76テスト) |
+| `.venv/bin/pytest agent/tests/ lambda/tests/ -v` | 全テスト実行 (94テスト) |
 | `.venv/bin/pytest agent/tests/ -v` | Agent テストのみ |
 | `.venv/bin/pytest lambda/tests/ -v` | Lambda テストのみ |
 
@@ -348,6 +361,7 @@ cd infra
 - **Lambda → AgentCore Runtime**: `bedrock-agentcore:InvokeAgentRuntime`
 - **Lambda → DynamoDB**: `GoogleOAuthTokens` / `UserSessionState` テーブルへの CRUD
 - **AgentCore Runtime → Bedrock**: `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`
+- **AgentCore Runtime → Bedrock Memory**: `bedrock:GetMemory`, `bedrock:CreateSession`, `bedrock:PutSessionEvent` 等
 - **OAuthCallbackFunction → DynamoDB**: `GoogleOAuthTokens` テーブルへの書き込み
 
 ### デプロイ手順
@@ -410,7 +424,9 @@ npm run deploy
 | 変数 | 説明 |
 |------|------|
 | `BEDROCK_MODEL_ID` | Bedrock モデル ID (default: Claude Sonnet 4.5) |
+| `BEDROCK_MEMORY_ID` | Bedrock AgentCore Memory ID (空の場合はメモリ無効) |
 | `CALENDAR_AGENT_ENDPOINT` | Calendar Agent エンドポイント (default: `http://localhost:8081`) |
 | `GMAIL_AGENT_ENDPOINT` | Gmail Agent エンドポイント (default: `http://localhost:8082`) |
 | `MAPS_API_BASE_URL` | Maps API ベース URL (default: `https://myplace-blush.vercel.app`) |
+| `TAVILY_API_KEY` | Tavily API キー (Web 検索用) |
 | `LOG_LEVEL` | ログレベル (default: `INFO`) |
