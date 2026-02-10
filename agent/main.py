@@ -6,6 +6,7 @@ Agents as Tools パターン:
 - メール操作 → gmail_agent ツール経由で Gmail Agent に委譲
 - 場所検索 → search_place ツール経由で Vercel API に委譲
 - おすすめ場所 → recommend_place ツール経由で Vercel API に委譲
+- Web 検索 → web_search / extract_content ツール経由で Tavily API
 """
 
 import json
@@ -32,6 +33,7 @@ from tools.google_maps import (
     request_location,
     search_place,
 )
+from tools.tavily_search import extract_content, web_search
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
@@ -84,16 +86,27 @@ request_location を呼ぶべきケース:
 ・エリア名が明示されていない場所検索・おすすめリクエスト → request_location
 ・注意: 「渋谷のカフェ」のようにエリアが明示されている場合は直接 search_place / recommend_place を使う
 
+web_search を呼ぶべきケース:
+・最新ニュースや時事問題について聞かれたとき
+・「調べて」「検索して」「最新の○○」などの表現
+・LLM の知識だけでは回答できない最新情報が必要なとき
+・特定のトピックについて詳しい情報が欲しいとき
+
+extract_content を呼ぶべきケース:
+・ユーザーが URL を共有して「この記事を要約して」と聞いたとき
+・web_search の結果をさらに詳しく確認したいとき
+
 【位置情報の扱い】
 ・プロンプトに「[ユーザーの現在地: 緯度XX, 経度XX]」が含まれている場合はその座標を使って search_place / recommend_place を呼ぶ
 ・位置情報が含まれている場合は request_location を呼ばない
 
 自分で直接回答するケース:
-・一般的な質問・雑談・知識系の質問（予定・場所検索に全く関係ないもの）
+・一般的な質問・雑談・知識系の質問（予定・場所検索・Web検索に全く関係ないもの）
 
 calendar_agent ツールを呼んだ場合は、その戻り値をそのまま返してください。加工しないでください。
 gmail_agent ツールを呼んだ場合は、その戻り値をそのまま返してください。加工しないでください。
 search_place / recommend_place ツールを呼んだ場合も、その戻り値をそのまま返してください。加工しないでください。
+web_search / extract_content ツールの結果は、内容を読み取り、ユーザーにわかりやすく自然な日本語で要約して回答してください。（他のツールと異なり、そのまま返さないでください）
 """
 
 MODEL_ID = os.environ.get(
@@ -241,7 +254,7 @@ def create_agent() -> Agent:
     return Agent(
         model=model,
         system_prompt=_build_system_prompt(),
-        tools=[calendar_agent, gmail_agent, search_place, recommend_place, request_location],
+        tools=[calendar_agent, gmail_agent, search_place, recommend_place, request_location, web_search, extract_content],
     )
 
 
