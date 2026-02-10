@@ -94,6 +94,38 @@ export class LineAgentStack extends cdk.Stack {
       }),
     );
 
+    // --- AgentCore Runtime (Gmail Agent) ---
+    const gmailAgentArtifact = agentcore.AgentRuntimeArtifact.fromAsset(
+      path.join(__dirname, "../../agent"),
+      {
+        file: "Dockerfile.gmail",
+      },
+    );
+
+    const gmailRuntime = new agentcore.Runtime(this, "GmailAgentRuntime", {
+      runtimeName: "gmailAgent",
+      agentRuntimeArtifact: gmailAgentArtifact,
+      description: "Google Gmail Agent with Strands + Gmail API tools",
+      environmentVariables: {
+        LOG_LEVEL: "INFO",
+        BEDROCK_MODEL_ID: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      },
+    });
+
+    gmailRuntime.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ],
+        resources: [
+          `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+          `arn:aws:bedrock:*::foundation-model/us.anthropic.*`,
+        ],
+      }),
+    );
+
     // --- Lambda Layer (dependencies) ---
     const depsLayer = new lambda.LayerVersion(this, "LambdaDepsLayer", {
       code: lambda.Code.fromAsset(path.join(__dirname, "../../lambda"), {
@@ -145,6 +177,7 @@ export class LineAgentStack extends cdk.Stack {
         ...commonEnv,
         AGENT_RUNTIME_ARN: runtime.agentRuntimeArn,
         CALENDAR_AGENT_RUNTIME_ARN: calendarRuntime.agentRuntimeArn,
+        GMAIL_AGENT_RUNTIME_ARN: gmailRuntime.agentRuntimeArn,
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
@@ -152,6 +185,7 @@ export class LineAgentStack extends cdk.Stack {
     // Grant Lambda permissions
     runtime.grantInvokeRuntime(webhookFunction);
     calendarRuntime.grantInvokeRuntime(webhookFunction);
+    gmailRuntime.grantInvokeRuntime(webhookFunction);
     tokenTable.grantReadWriteData(webhookFunction);
     stateTable.grantReadWriteData(webhookFunction);
 
@@ -220,6 +254,11 @@ export class LineAgentStack extends cdk.Stack {
     new cdk.CfnOutput(this, "CalendarRuntimeArn", {
       value: calendarRuntime.agentRuntimeArn,
       description: "AgentCore Runtime ARN (Calendar Agent)",
+    });
+
+    new cdk.CfnOutput(this, "GmailRuntimeArn", {
+      value: gmailRuntime.agentRuntimeArn,
+      description: "AgentCore Runtime ARN (Gmail Agent)",
     });
 
     new cdk.CfnOutput(this, "RuntimeName", {
