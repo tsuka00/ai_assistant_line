@@ -3,6 +3,7 @@
 Agents as Tools パターン:
 - 一般的な質問 → 自分で回答
 - カレンダー操作 → calendar_agent ツール経由で Calendar Agent に委譲
+- メール操作 → gmail_agent ツール経由で Gmail Agent に委譲
 - 場所検索 → search_place ツール経由で Vercel API に委譲
 - おすすめ場所 → recommend_place ツール経由で Vercel API に委譲
 """
@@ -57,6 +58,16 @@ calendar_agent を呼ぶべきケース:
 ・「来週」「明日」「今日」などの日時表現 + 行動 → 予定作成
 ・ユーザーの発言にカレンダー操作の意図が少しでもあれば → calendar_agent
 
+gmail_agent を呼ぶべきケース:
+・メール/Gmail/受信トレイに関する操作すべて
+・「メール見せて」「受信トレイ」「メール一覧」→ メール一覧
+・「メール送って」「○○にメール」→ メール送信
+・「メール検索」「○○からのメール」→ メール検索
+・「メール削除」「メール消して」→ メール削除
+・「既読にして」「スターつけて」「ラベルを変更」→ ラベル管理
+・「下書き保存」→ 下書き
+・ユーザーの発言にメール操作の意図が少しでもあれば → gmail_agent
+
 search_place を呼ぶべきケース:
 ・特定の場所・店舗・住所を検索したいとき
 ・「東京タワーの場所は？」「新宿駅近くのラーメン屋」「渋谷カフェ」
@@ -81,6 +92,7 @@ request_location を呼ぶべきケース:
 ・一般的な質問・雑談・知識系の質問（予定・場所検索に全く関係ないもの）
 
 calendar_agent ツールを呼んだ場合は、その戻り値をそのまま返してください。加工しないでください。
+gmail_agent ツールを呼んだ場合は、その戻り値をそのまま返してください。加工しないでください。
 search_place / recommend_place ツールを呼んだ場合も、その戻り値をそのまま返してください。加工しないでください。
 """
 
@@ -89,14 +101,60 @@ MODEL_ID = os.environ.get(
     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
 )
 
+def _sanitize_response(text: str) -> str:
+    """LLM レスポンスから JSON 部分を抽出.
+
+    Strands Agent の str(result) にはマークダウンコードブロックや
+    前後の説明テキストが含まれることがある。複数の手法で JSON を抽出する。
+    """
+    stripped = text.strip()
+
+    # 1. そのまま JSON として解析できるならそのまま返す
+    try:
+        json.loads(stripped)
+        return stripped
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # 2. Markdown コードブロック除去
+    if stripped.startswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            candidate = stripped[first_newline + 1:]
+        else:
+            candidate = stripped[3:]
+        if candidate.endswith("```"):
+            candidate = candidate[:-3].strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 3. テキスト中の最外 JSON オブジェクトを抽出 ({ ... })
+    first_brace = stripped.find("{")
+    last_brace = stripped.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = stripped[first_brace:last_brace + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return stripped
+
+
 CALENDAR_AGENT_ENDPOINT = os.environ.get("CALENDAR_AGENT_ENDPOINT", "http://localhost:8081")
+GMAIL_AGENT_ENDPOINT = os.environ.get("GMAIL_AGENT_ENDPOINT", "http://localhost:8082")
 
 app = BedrockAgentCoreApp()
 
 # Google 認証情報をリクエストスコープで保持
 _google_credentials: dict | None = None
-# calendar_agent ツールの生レスポンスを保持（LLM の加工をバイパスするため）
+# calendar_agent / gmail_agent ツールの生レスポンスを保持（LLM の加工をバイパスするため）
 _calendar_agent_result: str | None = None
+_gmail_agent_result: str | None = None
 
 
 @tool
@@ -131,6 +189,38 @@ def calendar_agent(query: str) -> str:
     return raw_result
 
 
+@tool
+def gmail_agent(query: str) -> str:
+    """Gmail のメール確認・検索・送信・削除・ラベル管理・下書き保存を行うエージェント。
+    メールに関する操作はすべてこのツールに委譲してください。"""
+    global _gmail_agent_result
+
+    payload = {"prompt": query}
+    if _google_credentials:
+        payload["google_credentials"] = _google_credentials
+
+    url = f"{GMAIL_AGENT_ENDPOINT.rstrip('/')}/invocations"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=55) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            raw_result = result.get("result", str(result))
+    except Exception as e:
+        logger.error("Gmail agent call failed: %s", e)
+        raw_result = json.dumps(
+            {"type": "text", "message": "メールエージェントへの接続に失敗しました。"},
+            ensure_ascii=False,
+        )
+
+    # LLM が JSON を加工するのを防ぐため、生レスポンスを保持
+    _gmail_agent_result = raw_result
+    return raw_result
+
+
 def _build_system_prompt() -> str:
     """現在日時を埋め込んだシステムプロンプトを生成."""
     from datetime import datetime, timedelta, timezone
@@ -151,14 +241,14 @@ def create_agent() -> Agent:
     return Agent(
         model=model,
         system_prompt=_build_system_prompt(),
-        tools=[calendar_agent, search_place, recommend_place, request_location],
+        tools=[calendar_agent, gmail_agent, search_place, recommend_place, request_location],
     )
 
 
 @app.entrypoint
 def invoke(payload: dict) -> dict:
     """Router Agent を呼び出し."""
-    global _google_credentials, _calendar_agent_result
+    global _google_credentials, _calendar_agent_result, _gmail_agent_result
 
     prompt = payload.get("prompt", "")
     if not prompt:
@@ -167,6 +257,7 @@ def invoke(payload: dict) -> dict:
     # リクエストスコープの初期化
     _google_credentials = payload.get("google_credentials")
     _calendar_agent_result = None
+    _gmail_agent_result = None
     clear_maps_result()
 
     logger.info("Invoking router agent with prompt length: %d", len(prompt))
@@ -179,17 +270,21 @@ def invoke(payload: dict) -> dict:
     if _calendar_agent_result is not None:
         response_text = _calendar_agent_result
         logger.info("Using raw calendar_agent result (bypassing LLM post-processing)")
+    elif _gmail_agent_result is not None:
+        response_text = _gmail_agent_result
+        logger.info("Using raw gmail_agent result (bypassing LLM post-processing)")
     elif maps_result is not None:
         response_text = maps_result
         logger.info("Using raw maps_agent result (bypassing LLM post-processing)")
     else:
-        response_text = str(result)
+        response_text = _sanitize_response(str(result))
 
     logger.info("Router agent response length: %d", len(response_text))
 
     # クリア
     _google_credentials = None
     _calendar_agent_result = None
+    _gmail_agent_result = None
     clear_maps_result()
 
     return {"result": response_text, "status": "success"}
