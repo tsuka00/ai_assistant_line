@@ -45,6 +45,7 @@ export class LineAgentStack extends cdk.Stack {
       environmentVariables: {
         LOG_LEVEL: "INFO",
         BEDROCK_MODEL_ID: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        TAVILY_API_KEY: process.env.TAVILY_API_KEY ?? "",
       },
     });
 
