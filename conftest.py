@@ -68,6 +68,19 @@ if "tools.google_gmail" not in sys.modules:
     sys.modules["tools.google_gmail"] = mod
     spec.loader.exec_module(mod)
 
+# Tavily mock — tavily モジュールを先にモックしてから tavily_search をロード
+if "tavily" not in sys.modules:
+    _mock_tavily = MagicMock()
+    sys.modules["tavily"] = _mock_tavily
+
+if "tools.tavily_search" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "tools.tavily_search", str(ROOT / "agent" / "tools" / "tavily_search.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["tools.tavily_search"] = mod
+    spec.loader.exec_module(mod)
+
 if "agent.main" not in sys.modules:
     spec = importlib.util.spec_from_file_location(
         "agent.main", str(ROOT / "agent" / "main.py")
