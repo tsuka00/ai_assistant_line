@@ -82,6 +82,50 @@ MODEL_ID = os.environ.get(
 
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
+
+def _sanitize_response(text: str) -> str:
+    """LLM レスポンスから JSON 部分を抽出.
+
+    Strands Agent の str(result) にはマークダウンコードブロックや
+    前後の説明テキストが含まれることがある。複数の手法で JSON を抽出する。
+    """
+    stripped = text.strip()
+
+    # 1. そのまま JSON として解析できるならそのまま返す
+    try:
+        json.loads(stripped)
+        return stripped
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # 2. Markdown コードブロック除去
+    if stripped.startswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            candidate = stripped[first_newline + 1:]
+        else:
+            candidate = stripped[3:]
+        if candidate.endswith("```"):
+            candidate = candidate[:-3].strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 3. テキスト中の最外 JSON オブジェクトを抽出 ({ ... })
+    first_brace = stripped.find("{")
+    last_brace = stripped.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = stripped[first_brace:last_brace + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return stripped
+
 app = BedrockAgentCoreApp()
 
 
@@ -149,7 +193,7 @@ def invoke(payload: dict) -> dict:
     # Google 認証情報セットアップ
     if not _setup_credentials(payload):
         return {
-            "result": '{"type": "text", "message": "Google 認証情報がありません。"}',
+            "result": '{"type": "oauth_required", "message": "Google 認証が必要です。"}',
             "status": "error",
         }
 
@@ -158,7 +202,7 @@ def invoke(payload: dict) -> dict:
     agent = create_agent()
     result = agent(prompt)
 
-    response_text = str(result)
+    response_text = _sanitize_response(str(result))
     logger.info("Calendar agent response length: %d", len(response_text))
 
     # JSON レスポンスの検証
