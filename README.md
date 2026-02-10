@@ -367,27 +367,56 @@ cd infra
 ### デプロイ手順
 
 ```bash
-# 1. 環境変数を設定
-export LINE_CHANNEL_SECRET=your-channel-secret
-export LINE_CHANNEL_ACCESS_TOKEN=your-channel-access-token
+cd infra
+
+# 1. .env.local の環境変数をシェルに読み込み
+set -a && source ../.env.local && set +a
 
 # 2. CDK Bootstrap (初回のみ)
-cd infra
 npx cdk bootstrap
 
-# 3. デプロイ
-npm run deploy
+# 3. 差分確認 (推奨)
+npx cdk diff
+
+# 4. デプロイ
+npx cdk deploy --require-approval never
 ```
+
+CDK は `process.env.*` でシェル環境変数を直接参照するため、デプロイ前に `.env.local` を読み込む必要がある。
+
+### DynamoDB テーブルが既に存在する場合
+
+CDK の外で先に DynamoDB テーブルを作成していた場合、`already exists` エラーになる。
+`cdk import` で既存テーブルを CDK 管理下に取り込む:
+
+```bash
+# マッピングファイルで既存テーブルを指定
+npx cdk import --resource-mapping import-map.json --force
+
+# その後デプロイ
+npx cdk deploy --require-approval never
+```
+
+詳細は `docs/knowledge/project.md` のセクション 8 を参照。
+
+### デプロイ後の設定
+
+| 設定項目 | 設定場所 |
+|---------|---------|
+| Webhook URL | LINE Developer Console → Messaging API → Webhook URL |
+| OAuth Redirect URI | GCP Console → 認証情報 → OAuth クライアント → リダイレクト URI |
+| LIFF Endpoint URL | LINE Developer Console → LIFF タブ |
 
 ### デプロイ後のスタック出力
 
 | 出力 | 説明 |
 |------|------|
 | `WebhookUrl` | LINE Developer Console に設定する Webhook URL |
-| `RuntimeArn` | AgentCore Runtime の ARN |
-| `RuntimeName` | AgentCore Runtime の名前 (`lineAssistantAgent`) |
-
-デプロイ後、出力された `WebhookUrl` を LINE Developer Console の Webhook URL に設定する。
+| `OAuthCallbackUrl` | GCP Console に設定する OAuth リダイレクト URI |
+| `RuntimeArn` | Router Agent Runtime ARN |
+| `CalendarRuntimeArn` | Calendar Agent Runtime ARN |
+| `GmailRuntimeArn` | Gmail Agent Runtime ARN |
+| `TokenTableName` | DynamoDB Token テーブル名 |
 
 ### 環境変数一覧
 
