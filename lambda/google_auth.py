@@ -21,7 +21,10 @@ OAUTH_STATE_SECRET = os.environ.get("OAUTH_STATE_SECRET", "")
 DYNAMODB_TOKEN_TABLE = os.environ.get("DYNAMODB_TOKEN_TABLE", "GoogleOAuthTokens")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/gmail.modify",
+]
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 

@@ -58,7 +58,7 @@ def lambda_handler(event, context):
         logger.warning("Failed to push completion message", exc_info=True)
 
     return _html_response(
-        "Google Calendar の連携が完了しました！LINEに戻って「今日の予定は？」と聞いてみてください。"
+        "Google 連携（カレンダー & メール）が完了しました！LINEに戻って「今日の予定は？」や「受信トレイ見せて」と聞いてみてください。"
     )
 
 
@@ -73,8 +73,8 @@ def _push_completion_message(line_user_id: str) -> None:
                 to=line_user_id,
                 messages=[
                     TextMessage(
-                        text="Google Calendar の連携が完了しました！\n\n"
-                        "「今日の予定は？」「予定を追加したい」などと話しかけてみてください。"
+                        text="Google 連携（カレンダー & メール）が完了しました！\n\n"
+                        "「今日の予定は？」「受信トレイ見せて」などと話しかけてみてください。"
                     )
                 ],
             )
@@ -88,7 +88,7 @@ def _html_response(message: str, status: int = 200) -> dict:
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Google Calendar 連携</title>
+    <title>Google 連携</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
