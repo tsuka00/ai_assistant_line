@@ -46,6 +46,7 @@ export class LineAgentStack extends cdk.Stack {
         LOG_LEVEL: "INFO",
         BEDROCK_MODEL_ID: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
         TAVILY_API_KEY: process.env.TAVILY_API_KEY ?? "",
+        BEDROCK_MEMORY_ID: process.env.BEDROCK_MEMORY_ID ?? "",
       },
     });
 
@@ -60,6 +61,26 @@ export class LineAgentStack extends cdk.Stack {
           `arn:aws:bedrock:*::foundation-model/anthropic.*`,
           `arn:aws:bedrock:*::foundation-model/us.anthropic.*`,
         ],
+      }),
+    );
+
+    // Bedrock AgentCore Memory 操作権限
+    runtime.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "bedrock:GetMemory",
+          "bedrock:CreateMemory",
+          "bedrock:UpdateMemory",
+          "bedrock:DeleteMemory",
+          "bedrock:CreateSession",
+          "bedrock:GetSession",
+          "bedrock:UpdateSession",
+          "bedrock:DeleteSession",
+          "bedrock:ListSessions",
+          "bedrock:PutSessionEvent",
+        ],
+        resources: ["*"],
       }),
     );
 
