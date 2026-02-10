@@ -22,7 +22,17 @@ _mock_bedrock_agentcore = MagicMock()
 _mock_app_instance = _mock_bedrock_agentcore.BedrockAgentCoreApp.return_value
 _mock_app_instance.entrypoint = lambda fn: fn  # pass-through decorator
 
+# bedrock_agentcore.memory.* サブモジュールのモック
+_mock_bedrock_agentcore_memory = MagicMock()
+_mock_bedrock_agentcore_memory_integrations = MagicMock()
+_mock_bedrock_agentcore_memory_integrations_strands = MagicMock()
+_mock_bedrock_agentcore_memory_integrations_strands_config = MagicMock()
+
 sys.modules.setdefault("bedrock_agentcore", _mock_bedrock_agentcore)
+sys.modules.setdefault("bedrock_agentcore.memory", _mock_bedrock_agentcore_memory)
+sys.modules.setdefault("bedrock_agentcore.memory.integrations", _mock_bedrock_agentcore_memory_integrations)
+sys.modules.setdefault("bedrock_agentcore.memory.integrations.strands", _mock_bedrock_agentcore_memory_integrations_strands)
+sys.modules.setdefault("bedrock_agentcore.memory.integrations.strands.config", _mock_bedrock_agentcore_memory_integrations_strands_config)
 sys.modules.setdefault("dotenv", MagicMock())
 _mock_strands = MagicMock()
 _mock_strands.tool = lambda fn: fn  # pass-through decorator
