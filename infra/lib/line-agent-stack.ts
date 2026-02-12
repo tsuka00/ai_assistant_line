@@ -200,6 +200,7 @@ export class LineAgentStack extends cdk.Stack {
         AGENT_RUNTIME_ARN: runtime.agentRuntimeArn,
         CALENDAR_AGENT_RUNTIME_ARN: calendarRuntime.agentRuntimeArn,
         GMAIL_AGENT_RUNTIME_ARN: gmailRuntime.agentRuntimeArn,
+        DEV_WEBHOOK_URL: process.env.DEV_WEBHOOK_URL ?? "",
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
     });

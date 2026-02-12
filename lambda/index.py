@@ -68,6 +68,9 @@ USER_STATE_TABLE = os.environ.get("USER_STATE_TABLE", "UserSessionState")
 # LIFF
 LIFF_ID = os.environ.get("LIFF_ID", "")
 
+# Dev Webhook Proxy
+DEV_WEBHOOK_URL = os.environ.get("DEV_WEBHOOK_URL", "")
+
 
 # ========== LINE メッセージ送信 ==========
 
@@ -812,6 +815,29 @@ def _handle_email_send(reply_token: str, user_id: str, params: dict) -> None:
     send_response(reply_token, user_id, messages, elapsed)
 
 
+# ---------- Dev Webhook Proxy ----------
+
+
+def _forward_to_dev(body: str, signature: str) -> dict:
+    """Webhook リクエストを dev エンドポイントに転送."""
+    import urllib.request
+
+    req = urllib.request.Request(
+        DEV_WEBHOOK_URL,
+        data=body.encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-line-signature": signature,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return {"statusCode": resp.status, "body": resp.read().decode("utf-8")}
+    except Exception:
+        logger.error("Failed to forward to dev webhook", exc_info=True)
+        return {"statusCode": 502, "body": "Dev forwarding failed"}
+
+
 # ---------- Lambda Handler ----------
 
 
@@ -819,6 +845,11 @@ def lambda_handler(event, context):
     """API Gateway proxy event を処理."""
     body = event.get("body", "")
     signature = (event.get("headers") or {}).get("x-line-signature", "")
+
+    # Dev Webhook Proxy: DEV_WEBHOOK_URL が設定されていれば全リクエストを転送
+    if DEV_WEBHOOK_URL:
+        logger.info("Forwarding to dev webhook: %s", DEV_WEBHOOK_URL)
+        return _forward_to_dev(body, signature)
 
     if not signature:
         return {"statusCode": 400, "body": "Missing signature"}

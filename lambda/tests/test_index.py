@@ -513,6 +513,70 @@ def test_invoke_router_agent_passes_line_user_id():
         idx.AGENTCORE_RUNTIME_ENDPOINT = original
 
 
+# ---------------------------------------------------------------------------
+# Dev Webhook Proxy tests
+# ---------------------------------------------------------------------------
+
+
+def test_lambda_handler_forwards_to_dev():
+    """DEV_WEBHOOK_URL 設定時にリクエストが転送されること."""
+    original_url = idx.DEV_WEBHOOK_URL
+    idx.DEV_WEBHOOK_URL = "https://dev.ngrok.io/callback"
+
+    try:
+        body = json.dumps({"events": [{"source": {"userId": "U001"}}]})
+        event = {"body": body, "headers": {"x-line-signature": "sig123"}}
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"status":"ok"}'
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("urllib.request.Request") as mock_req_cls,
+            patch("urllib.request.urlopen", return_value=mock_resp),
+        ):
+            result = idx.lambda_handler(event, None)
+
+        assert result["statusCode"] == 200
+        call_args = mock_req_cls.call_args
+        assert call_args[0][0] == "https://dev.ngrok.io/callback"
+        assert call_args[1]["headers"]["x-line-signature"] == "sig123"
+    finally:
+        idx.DEV_WEBHOOK_URL = original_url
+
+
+def test_lambda_handler_no_forward_without_dev_url():
+    """DEV_WEBHOOK_URL 未設定なら通常処理されること."""
+    original_url = idx.DEV_WEBHOOK_URL
+    idx.DEV_WEBHOOK_URL = ""
+
+    try:
+        body = json.dumps({"events": [{"source": {"userId": "U001"}}]})
+        event = {"body": body, "headers": {"x-line-signature": "sig123"}}
+
+        with patch.object(idx, "parser") as mock_parser:
+            mock_parser.parse.return_value = []
+            result = idx.lambda_handler(event, None)
+
+        assert result["statusCode"] == 200
+    finally:
+        idx.DEV_WEBHOOK_URL = original_url
+
+
+def test_forward_to_dev_failure():
+    """転送失敗時に 502 が返ること."""
+    original_url = idx.DEV_WEBHOOK_URL
+    idx.DEV_WEBHOOK_URL = "https://dev.ngrok.io/callback"
+    try:
+        with patch("urllib.request.urlopen", side_effect=Exception("connection refused")):
+            result = idx._forward_to_dev('{"events":[]}', "sig")
+        assert result["statusCode"] == 502
+    finally:
+        idx.DEV_WEBHOOK_URL = original_url
+
+
 def test_lambda_handler_location_message():
     """LocationMessageContent のディスパッチが正しいこと."""
     from linebot.v3.webhooks import LocationMessageContent, MessageEvent

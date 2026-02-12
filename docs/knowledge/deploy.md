@@ -187,6 +187,7 @@ AgentCore Memory は `us-east-1` で作成する。Agent Runtime (`ap-northeast-
 | `OAUTH_STATE_SECRET` | OAuth state HMAC 署名 | Webhook Lambda, OAuth Callback Lambda |
 | `TAVILY_API_KEY` | Tavily Web Search | Router Agent Runtime |
 | `BEDROCK_MEMORY_ID` | AgentCore Memory | Router Agent Runtime |
+| `DEV_WEBHOOK_URL` | Dev Webhook 転送先 (ngrok URL) | Webhook Lambda |
 
 ### CDK が自動設定する変数（手動設定不要）
 

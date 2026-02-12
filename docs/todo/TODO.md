@@ -102,4 +102,7 @@
 | 98 | Bedrock AgentCore Memory: .env / CDK 更新 | ✅ 完了 | BEDROCK_MEMORY_ID 追加, IAM ポリシー |
 | 99 | Bedrock AgentCore Memory: テスト実行・修正 | ✅ 完了 | 全94テスト合格 |
 | 100 | Bedrock AgentCore Memory: AWS リソース作成 & デプロイ | ✅ 完了 | LineAssistantMemory-8u4fziHv4d (us-east-1), 3ストラテジー, デプロイ済み |
+| 101 | Dev Webhook Proxy: Lambda handler に dev 転送ロジック追加 | ✅ 完了 | _is_dev_request + _forward_to_dev、lambda_handler 先頭で判定 |
+| 102 | Dev Webhook Proxy: .env / CDK 環境変数追加 | ✅ 完了 | DEV_WEBHOOK_URL, DEV_USER_IDS を .env.example + CDK に追加 |
+| 103 | Dev Webhook Proxy: ユニットテスト追加 | ✅ 完了 | 8テスト追加、全102テスト合格 |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
