@@ -106,3 +106,40 @@
 | 102 | Dev Webhook Proxy: .env / CDK 環境変数追加 | ✅ 完了 | DEV_WEBHOOK_URL, DEV_USER_IDS を .env.example + CDK に追加 |
 | 103 | Dev Webhook Proxy: ユニットテスト追加 | ✅ 完了 | 8テスト追加、全102テスト合格 |
 | - | マルチエージェント統合テスト | ⏳ 未着手 | 各エージェント + ルーティングのテスト |
+
+## AgentCore Gateway / Identity / Observability
+
+プラン: [docs/plans/agentcore-gateway-identity-observability.md](../plans/agentcore-gateway-identity-observability.md)
+
+| # | タスク | ステータス | 備考 |
+|---|--------|-----------|------|
+| 110 | AgentCore Gateway: CDK L2/L1 コンストラクト調査 | ⏳ 未着手 | @aws-cdk/aws-bedrock-agentcore-alpha に Gateway 対応があるか確認 |
+| 111 | AgentCore Gateway: Gateway リソースを CDK で作成 | ⏳ 未着手 | |
+| 112 | AgentCore Gateway: Maps API を OpenAPI Target として登録 | ⏳ 未着手 | Vercel API の OpenAPI 仕様作成 → Target 登録 |
+| 113 | AgentCore Gateway: Tavily API を OpenAPI Target として登録 | ⏳ 未着手 | Tavily API の OpenAPI 仕様作成 → Target 登録 |
+| 114 | AgentCore Gateway: Calendar/Gmail Agent を Target として登録 | ⏳ 未着手 | Runtime → Gateway Target の接続方式を調査・実装 |
+| 115 | AgentCore Gateway: Router Agent のツール呼び出しを Gateway 経由に変更 | ⏳ 未着手 | agent/main.py 改修 |
+| 116 | AgentCore Gateway: IAM ポリシー更新 | ⏳ 未着手 | Gateway 操作権限を Runtime / Lambda に付与 |
+| 117 | AgentCore Gateway: ユニットテスト | ⏳ 未着手 | Gateway 経由のツール呼び出しテスト |
+| 120 | AgentCore Identity: Identity と LINE LIFF の OAuth 連携方式調査 | ⏳ 未着手 | line_user_id との紐付け、LIFF 互換性 |
+| 121 | AgentCore Identity: Google OAuth Provider 登録 | ⏳ 未着手 | スコープ: calendar.events, gmail.modify |
+| 122 | AgentCore Identity: OAuth コールバックフロー移行 | ⏳ 未着手 | LIFF → Identity 認証 URL → Vault 保存 |
+| 123 | AgentCore Identity: Lambda/Agent のトークン取得を Identity SDK に変更 | ⏳ 未着手 | lambda/google_auth.py, agent/main.py 改修 |
+| 124 | AgentCore Identity: DynamoDB GoogleOAuthTokens テーブル廃止 | ⏳ 未着手 | 段階的移行、既存ユーザーの再認証 |
+| 125 | AgentCore Identity: CDK スタック更新 | ⏳ 未着手 | Identity リソース追加 |
+| 126 | AgentCore Identity: ユニットテスト | ⏳ 未着手 | Identity SDK モック + フロー検証 |
+| 130 | AgentCore Observability: CloudWatch メトリクスフィルター追加 | ⏳ 未着手 | エラー率、レイテンシ (暫定対応) |
+| 131 | AgentCore Observability: CloudWatch ダッシュボード作成 (CDK) | ⏳ 未着手 | Runtime / Gateway / Lambda のメトリクス可視化 |
+| 132 | AgentCore Observability: アラーム設定 | ⏳ 未着手 | エラー率閾値、レイテンシ閾値 |
+| 133 | AgentCore Observability: 東京リージョン対応後に AgentCore Observability 移行 | ⏳ 未着手 | ap-northeast-1 対応待ち |
+
+## Bedrock Knowledge Base
+
+| # | タスク | ステータス | 備考 |
+|---|--------|-----------|------|
+| 140 | Knowledge Base: データソース & ユースケース設計 | ⏳ 未着手 | S3 バケット構成、入れるドキュメントの種類決定 |
+| 141 | Knowledge Base: S3 データソース作成 & ドキュメント投入 | ⏳ 未着手 | |
+| 142 | Knowledge Base: Bedrock Knowledge Base リソース作成 (CDK) | ⏳ 未着手 | ベクトル DB 選定 (OpenSearch Serverless / Aurora 等) |
+| 143 | Knowledge Base: Router Agent に検索ツール追加 | ⏳ 未着手 | agent/main.py に retrieve ツール追加 |
+| 144 | Knowledge Base: IAM ポリシー更新 | ⏳ 未着手 | KB 検索権限を Runtime に付与 |
+| 145 | Knowledge Base: ユニットテスト | ⏳ 未着手 | KB 検索モック + レスポンス検証 |
